@@ -25,6 +25,7 @@
 const ACCOUNT_ID = 'b62c683522b0480cb5cf56b57dc6ba77';
 const ZONE_ID = 'dc57ebbf78af9984015c7762b4fee21d';
 const DOMAIN = 'aguakmze.ro';
+const VERSION = '36aae85'; // Update this with: git log -1 --format="%h"
 
 export default {
   async fetch(request, env) {
@@ -661,6 +662,16 @@ function getDashboardHTML() {
       font-size: 0.7rem;
       color: var(--text-muted);
       margin-top: -2px;
+    }
+    .version-tag {
+      font-size: 0.55rem;
+      color: var(--text-muted);
+      background: var(--border);
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      margin-left: 0.5rem;
+      font-family: 'SF Mono', Monaco, monospace;
+      opacity: 0.7;
     }
 
     /* Summary Stats */
@@ -1484,7 +1495,7 @@ function getDashboardHTML() {
           <div class="logo-icon">💧</div>
           <div class="logo-text">
             <h1>H2OS Fleet</h1>
-            <p>Groundwater Monitoring</p>
+            <p>Groundwater Monitoring <span class="version-tag">v${VERSION}</span></p>
           </div>
         </div>
         <div class="summary-stats" id="summary-stats">
@@ -1850,25 +1861,15 @@ function getDashboardHTML() {
     }
 
     // Toggle location collapse
-    function toggleLocation(location) {
-      const idx = userPrefs.collapsedLocations.indexOf(location);
-      const isCollapsing = idx === -1;
+    function toggleLocation(locKey) {
+      const idx = userPrefs.collapsedLocations.indexOf(locKey);
       if (idx > -1) {
         userPrefs.collapsedLocations.splice(idx, 1);
       } else {
-        userPrefs.collapsedLocations.push(location);
+        userPrefs.collapsedLocations.push(locKey);
       }
       savePreferences();
-
-      // Toggle header state and cards visibility
-      const headers = document.querySelectorAll('.location-header');
-      headers.forEach(h => {
-        if (h.textContent.includes(location)) {
-          h.classList.toggle('collapsed', isCollapsing);
-        }
-      });
-      const cards = document.querySelectorAll('.card[data-location="' + location + '"]');
-      cards.forEach(c => c.classList.toggle('hidden', isCollapsing));
+      renderDevices(); // Re-render with updated collapsed state
     }
 
     // Copy SSH
@@ -1932,12 +1933,17 @@ function getDashboardHTML() {
       const pinned = filtered.filter(d => userPrefs.pinnedDevices.includes(d.device_id));
       const unpinned = filtered.filter(d => !userPrefs.pinnedDevices.includes(d.device_id));
 
-      // Group by location
+      // Group by location (case-insensitive)
       const grouped = {};
+      const locationDisplayNames = {}; // Store original case for display
       unpinned.forEach(d => {
         const loc = d.location || 'No Location';
-        if (!grouped[loc]) grouped[loc] = [];
-        grouped[loc].push(d);
+        const locKey = loc.toLowerCase().trim(); // normalize for grouping
+        if (!grouped[locKey]) {
+          grouped[locKey] = [];
+          locationDisplayNames[locKey] = loc; // store first occurrence for display
+        }
+        grouped[locKey].push(d);
       });
 
       const locations = Object.keys(grouped).sort();
@@ -1956,16 +1962,17 @@ function getDashboardHTML() {
       }
 
       // Location groups in unified grid
-      locations.forEach(loc => {
-        const isCollapsed = userPrefs.collapsedLocations.includes(loc);
+      locations.forEach(locKey => {
+        const displayLoc = locationDisplayNames[locKey];
+        const isCollapsed = userPrefs.collapsedLocations.includes(locKey);
         if (showLocationHeaders) {
-          html += '<div class="location-header' + (isCollapsed ? ' collapsed' : '') + '" onclick="toggleLocation(\\''+loc.replace(/'/g, "\\\\'")+'\\')">';
+          html += '<div class="location-header' + (isCollapsed ? ' collapsed' : '') + '" onclick="toggleLocation(\\''+locKey.replace(/'/g, "\\\\'")+'\\')">';
           html += '<span class="location-chevron">' + icons.chevron + '</span>';
-          html += '<span class="location-name">' + loc + '</span>';
-          html += '<span class="location-count">' + grouped[loc].length + '</span>';
+          html += '<span class="location-name">' + displayLoc + '</span>';
+          html += '<span class="location-count">' + grouped[locKey].length + '</span>';
           html += '</div>';
         }
-        grouped[loc].forEach(d => {
+        grouped[locKey].forEach(d => {
           html += renderCard(d, false, !showLocationHeaders, isCollapsed && showLocationHeaders);
         });
       });
