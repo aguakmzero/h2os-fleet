@@ -1610,6 +1610,10 @@ systemctl enable cloudflared
 
 echo -e "\${GREEN}✓ Tunnel service running\${NC}"
 
+# Track installation results
+VNC_OK=false
+STATUS_OK=false
+
 # Step 6: Install VNC (x11vnc + noVNC)
 echo ""
 echo "Installing VNC support..."
@@ -1617,8 +1621,12 @@ echo "Installing VNC support..."
 # Note: RealVNC stays on port 5900 (for company use)
 # x11vnc runs on port 5901 (for noVNC browser access)
 
-apt-get update --allow-releaseinfo-change -qq
-apt-get install -y -qq x11vnc novnc python3-websockify > /dev/null 2>&1
+apt-get update --allow-releaseinfo-change -qq 2>/dev/null || true
+if apt-get install -y -qq x11vnc novnc python3-websockify 2>/dev/null; then
+  echo "  VNC packages installed"
+else
+  echo -e "\${YELLOW}  ⚠ VNC packages failed to install (apt-get error)\${NC}"
+fi
 
 # Create x11vnc service on port 5901 (doesn't conflict with RealVNC on 5900)
 cat > /etc/systemd/system/x11vnc.service << 'VNCEOF'
@@ -1653,17 +1661,27 @@ WantedBy=multi-user.target
 NOVNCEOF
 
 systemctl daemon-reload
-systemctl enable x11vnc novnc
-systemctl start x11vnc novnc
+systemctl enable x11vnc novnc 2>/dev/null
+systemctl start x11vnc novnc 2>/dev/null
 
-echo -e "\${GREEN}✓ VNC services installed and running\${NC}"
+# Check if VNC actually started
+if systemctl is-active --quiet x11vnc && systemctl is-active --quiet novnc; then
+  VNC_OK=true
+  echo -e "\${GREEN}✓ VNC services running\${NC}"
+else
+  echo -e "\${YELLOW}⚠ VNC services not running (check: systemctl status x11vnc novnc)\${NC}"
+fi
 
 # Step 7: Install status endpoint with screenshot support
 echo ""
 echo "Installing status endpoint with screenshot support..."
 
 # Install screenshot dependencies
-apt-get install -y -qq scrot xdotool imagemagick > /dev/null 2>&1
+if apt-get install -y -qq scrot xdotool imagemagick 2>/dev/null; then
+  echo "  Screenshot tools installed"
+else
+  echo -e "\${YELLOW}  ⚠ Screenshot tools failed (apt-get error)\${NC}"
+fi
 
 # Create screenshot wrapper script (handles X11 auth for systemd services)
 cat > /opt/take-screenshot.sh << 'SCREOF'
@@ -1817,33 +1835,82 @@ WantedBy=default.target
 SVCEOF
 
 systemctl daemon-reload
-systemctl enable h2os-status
-systemctl start h2os-status
+systemctl enable h2os-status 2>/dev/null
+systemctl start h2os-status 2>/dev/null
 
-echo -e "\${GREEN}✓ Status endpoint with screenshot support installed\${NC}"
+# Wait a moment for service to start
+sleep 2
 
-# Done
+# Check if status endpoint actually started
+if systemctl is-active --quiet h2os-status; then
+  STATUS_OK=true
+  echo -e "\${GREEN}✓ Status endpoint running\${NC}"
+else
+  echo -e "\${YELLOW}⚠ Status endpoint not running\${NC}"
+  echo "  Debug: systemctl status h2os-status"
+  echo "  Logs:  journalctl -u h2os-status -n 20"
+fi
+
+# Final Summary
 HOSTNAME="$DEVICE_NAME-fleet.aguakmze.ro"
 echo ""
 echo "======================================"
-echo -e "\${GREEN}  Setup Complete!\${NC}"
+echo "  SETUP SUMMARY"
 echo "======================================"
 echo ""
-echo "Device hostname: $HOSTNAME"
+
+# Tunnel status (always check live)
+if systemctl is-active --quiet cloudflared; then
+  echo -e "\${GREEN}✓ Tunnel:    RUNNING\${NC}"
+else
+  echo -e "\${RED}✗ Tunnel:    NOT RUNNING\${NC}"
+fi
+
+# VNC status
+if [ "$VNC_OK" = "true" ]; then
+  echo -e "\${GREEN}✓ VNC:       RUNNING\${NC}"
+else
+  echo -e "\${YELLOW}⚠ VNC:       NOT RUNNING\${NC}"
+fi
+
+# Status endpoint
+if [ "$STATUS_OK" = "true" ]; then
+  echo -e "\${GREEN}✓ Status:    RUNNING\${NC}"
+else
+  echo -e "\${YELLOW}⚠ Status:    NOT RUNNING\${NC}"
+fi
+
 echo ""
-echo "SSH access:"
-echo "  ssh -o ProxyCommand=\\"cloudflared access ssh --hostname %h\\" pizero@$HOSTNAME"
+echo "Device: $HOSTNAME"
 echo ""
-echo "VNC access (browser):"
-echo "  https://$HOSTNAME/vnc.html"
+
+# Show URLs only for working services
+echo "Access:"
+echo "  SSH:       ssh -o ProxyCommand=\\"cloudflared access ssh --hostname %h\\" pizero@$HOSTNAME"
+if [ "$VNC_OK" = "true" ]; then
+  echo "  VNC:       https://$HOSTNAME/vnc.html"
+fi
+if [ "$STATUS_OK" = "true" ]; then
+  echo "  Status:    https://$HOSTNAME/status"
+fi
+echo "  Dashboard: https://fleet.aguakmze.ro/dashboard"
 echo ""
-echo "Status endpoint:"
-echo "  https://$HOSTNAME/status"
-echo ""
-echo "Dashboard:"
-echo "  https://fleet.aguakmze.ro/dashboard"
-echo ""
-echo "Add to ~/.ssh/config for easier access:"
+
+# Show what failed and how to debug
+if [ "$VNC_OK" != "true" ] || [ "$STATUS_OK" != "true" ]; then
+  echo -e "\${YELLOW}Some services failed. Debug commands:\${NC}"
+  if [ "$VNC_OK" != "true" ]; then
+    echo "  systemctl status x11vnc novnc"
+    echo "  journalctl -u x11vnc -u novnc -n 20"
+  fi
+  if [ "$STATUS_OK" != "true" ]; then
+    echo "  systemctl status h2os-status"
+    echo "  journalctl -u h2os-status -n 20"
+  fi
+  echo ""
+fi
+
+echo "SSH config shortcut:"
 echo "  Host *-fleet.aguakmze.ro"
 echo "      ProxyCommand cloudflared access ssh --hostname %h"
 echo "      User pizero"
