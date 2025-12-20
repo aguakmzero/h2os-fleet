@@ -16,6 +16,10 @@
  * POST /register   - Creates tunnel, DNS, and returns token
  * POST /devices    - List/search devices
  * GET  /api/devices - Get devices as JSON (for dashboard)
+ * GET  /api/fleet-status - Get live status of all devices (with optional filters)
+ *      ?status=healthy|partial|offline - Filter by status
+ *      ?location=Barcelona - Filter by location
+ *      ?device=genie-1 - Filter by device name
  */
 
 const ACCOUNT_ID = 'b62c683522b0480cb5cf56b57dc6ba77';
@@ -53,6 +57,9 @@ export default {
 
         case '/api/devices':
           return handleApiDevices(request, env, corsHeaders);
+
+        case '/api/fleet-status':
+          return handleFleetStatus(request, env, corsHeaders);
 
         case '/validate':
           return handleValidate(request, env, corsHeaders);
@@ -304,6 +311,83 @@ async function handleApiDevices(request, env, corsHeaders) {
   return new Response(JSON.stringify({
     devices: devices.results,
     count: devices.results.length,
+  }), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+// Fetch live status from all devices with optional filtering
+async function handleFleetStatus(request, env, corsHeaders) {
+  const url = new URL(request.url);
+  const filterStatus = url.searchParams.get('status');
+  const filterLocation = url.searchParams.get('location');
+  const filterDevice = url.searchParams.get('device');
+
+  // Get all devices from DB
+  const devices = await env.DB.prepare(`
+    SELECT * FROM devices ORDER BY device_id ASC
+  `).all();
+
+  // Fetch status from each device in parallel
+  const statusPromises = devices.results.map(async (device) => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      const res = await fetch(`https://${device.hostname}/status`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const status = await res.json();
+
+      return {
+        device_id: device.device_id,
+        friendly_name: device.friendly_name,
+        hostname: device.hostname,
+        location: device.location,
+        ...status,
+        online: true,
+      };
+    } catch (err) {
+      return {
+        device_id: device.device_id,
+        friendly_name: device.friendly_name,
+        hostname: device.hostname,
+        location: device.location,
+        status: 'offline',
+        error: err.message,
+        online: false,
+      };
+    }
+  });
+
+  let results = await Promise.all(statusPromises);
+
+  // Apply filters
+  if (filterStatus) {
+    results = results.filter(d => d.status === filterStatus);
+  }
+  if (filterLocation) {
+    results = results.filter(d => d.location && d.location.toLowerCase().includes(filterLocation.toLowerCase()));
+  }
+  if (filterDevice) {
+    results = results.filter(d => d.device_id.includes(filterDevice));
+  }
+
+  // Summary stats
+  const summary = {
+    total: results.length,
+    healthy: results.filter(d => d.status === 'healthy').length,
+    partial: results.filter(d => d.status === 'partial').length,
+    offline: results.filter(d => d.status === 'offline').length,
+  };
+
+  return new Response(JSON.stringify({
+    summary,
+    devices: results,
+    timestamp: new Date().toISOString(),
   }), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
