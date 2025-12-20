@@ -73,6 +73,9 @@ export default {
         case '/devices':
           return handleDevices(request, env, corsHeaders);
 
+        case '/download/cloudflared':
+          return handleCloudflaredDownload(url, corsHeaders);
+
         default:
           return new Response('Not found', { status: 404 });
       }
@@ -391,6 +394,51 @@ async function handleFleetStatus(request, env, corsHeaders) {
   }), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+// Proxy cloudflared downloads through our worker (for Pis that can't reach GitHub)
+async function handleCloudflaredDownload(url, corsHeaders) {
+  const arch = url.searchParams.get('arch') || 'armhf';
+  const validArchs = ['armhf', 'arm64', 'amd64'];
+
+  if (!validArchs.includes(arch)) {
+    return new Response(`Invalid architecture. Use: ${validArchs.join(', ')}`, {
+      status: 400,
+      headers: corsHeaders,
+    });
+  }
+
+  const githubUrl = `https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${arch}.deb`;
+
+  try {
+    const response = await fetch(githubUrl, {
+      headers: {
+        'User-Agent': 'H2OS-Fleet-Setup/1.0',
+      },
+    });
+
+    if (!response.ok) {
+      return new Response(`Failed to fetch from GitHub: ${response.status}`, {
+        status: 502,
+        headers: corsHeaders,
+      });
+    }
+
+    // Stream the response through
+    return new Response(response.body, {
+      status: 200,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/vnd.debian.binary-package',
+        'Content-Disposition': `attachment; filename="cloudflared-linux-${arch}.deb"`,
+      },
+    });
+  } catch (err) {
+    return new Response(`Proxy error: ${err.message}`, {
+      status: 502,
+      headers: corsHeaders,
+    });
+  }
 }
 
 function getDashboardHTML() {
@@ -1467,14 +1515,10 @@ if ! command -v cloudflared &> /dev/null; then
   echo "Detected architecture: $ARCH"
 
   case "$ARCH" in
-    arm64)
-      DEB_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64.deb"
-      ;;
-    armhf)
-      DEB_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-armhf.deb"
-      ;;
-    amd64)
-      DEB_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb"
+    arm64|armhf|amd64)
+      # Use our proxy first, fallback to GitHub
+      PROXY_URL="$SETUP_URL/download/cloudflared?arch=$ARCH"
+      GITHUB_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-\${ARCH}.deb"
       ;;
     *)
       echo -e "\${RED}✗ Unsupported architecture: $ARCH\${NC}"
@@ -1482,51 +1526,45 @@ if ! command -v cloudflared &> /dev/null; then
       ;;
   esac
 
-  echo "Downloading from: $DEB_URL"
   rm -f /tmp/cloudflared.deb
-
-  # Download with error checking and retry
-  MAX_RETRIES=3
-  RETRY_COUNT=0
   DOWNLOAD_SUCCESS=false
 
-  while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ "$DOWNLOAD_SUCCESS" = "false" ]; do
-    RETRY_COUNT=$((RETRY_COUNT + 1))
-    echo "Download attempt $RETRY_COUNT of $MAX_RETRIES..."
+  # Try GitHub directly first (faster)
+  echo "Downloading from GitHub..."
+  echo "URL: $GITHUB_URL"
+  if curl -fSL --connect-timeout 15 --max-time 90 "$GITHUB_URL" -o /tmp/cloudflared.deb 2>&1; then
+    if [ -f /tmp/cloudflared.deb ]; then
+      FILE_SIZE=$(stat -c%s /tmp/cloudflared.deb 2>/dev/null || stat -f%z /tmp/cloudflared.deb 2>/dev/null)
+      if [ "$FILE_SIZE" -gt 1000000 ]; then
+        echo "Downloaded: $FILE_SIZE bytes"
+        DOWNLOAD_SUCCESS=true
+        echo -e "\${GREEN}✓ Downloaded from GitHub\${NC}"
+      fi
+    fi
+  fi
 
-    if curl -fSL --retry 3 --retry-delay 2 "$DEB_URL" -o /tmp/cloudflared.deb 2>&1; then
-      # Verify download succeeded and file is valid
+  # Fallback to our proxy if GitHub is blocked/slow
+  if [ "$DOWNLOAD_SUCCESS" = "false" ]; then
+    echo -e "\${YELLOW}GitHub failed, trying fleet proxy...\${NC}"
+    echo "URL: $PROXY_URL"
+    rm -f /tmp/cloudflared.deb
+
+    if curl -fSL --connect-timeout 30 --max-time 180 "$PROXY_URL" -o /tmp/cloudflared.deb 2>&1; then
       if [ -f /tmp/cloudflared.deb ]; then
         FILE_SIZE=$(stat -c%s /tmp/cloudflared.deb 2>/dev/null || stat -f%z /tmp/cloudflared.deb 2>/dev/null)
-        FILE_TYPE=$(file /tmp/cloudflared.deb 2>/dev/null | head -1)
-
-        echo "Downloaded file size: $FILE_SIZE bytes"
-        echo "File type: $FILE_TYPE"
-
-        # Check if it's actually a deb package (should be > 1MB and contain "Debian")
-        if [ "$FILE_SIZE" -gt 1000000 ] && echo "$FILE_TYPE" | grep -qi "debian"; then
+        if [ "$FILE_SIZE" -gt 1000000 ]; then
+          echo "Downloaded: $FILE_SIZE bytes"
           DOWNLOAD_SUCCESS=true
-          echo -e "\${GREEN}✓ Download verified\${NC}"
-        else
-          echo -e "\${YELLOW}⚠ Downloaded file doesn't look like a valid .deb package\${NC}"
-          rm -f /tmp/cloudflared.deb
-          sleep 2
+          echo -e "\${GREEN}✓ Downloaded via proxy\${NC}"
         fi
-      else
-        echo -e "\${YELLOW}⚠ Download file not found\${NC}"
-        sleep 2
       fi
-    else
-      echo -e "\${YELLOW}⚠ Download failed, retrying...\${NC}"
-      rm -f /tmp/cloudflared.deb
-      sleep 2
     fi
-  done
+  fi
 
   if [ "$DOWNLOAD_SUCCESS" = "false" ]; then
-    echo -e "\${RED}✗ Failed to download cloudflared after $MAX_RETRIES attempts\${NC}"
-    echo "You can try manually installing cloudflared:"
-    echo "  curl -fSL $DEB_URL -o /tmp/cloudflared.deb && dpkg -i /tmp/cloudflared.deb"
+    echo -e "\${RED}✗ Failed to download cloudflared\${NC}"
+    echo "Both proxy and GitHub failed. Try manually:"
+    echo "  curl -fSL $GITHUB_URL -o /tmp/cloudflared.deb && sudo dpkg -i /tmp/cloudflared.deb"
     exit 1
   fi
 
