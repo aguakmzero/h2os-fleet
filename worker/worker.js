@@ -1464,6 +1464,8 @@ echo "Installing cloudflared..."
 
 if ! command -v cloudflared &> /dev/null; then
   ARCH=$(dpkg --print-architecture)
+  echo "Detected architecture: $ARCH"
+
   case "$ARCH" in
     arm64)
       DEB_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64.deb"
@@ -1480,9 +1482,56 @@ if ! command -v cloudflared &> /dev/null; then
       ;;
   esac
 
-  curl -sL "$DEB_URL" -o /tmp/cloudflared.deb
+  echo "Downloading from: $DEB_URL"
+  rm -f /tmp/cloudflared.deb
+
+  # Download with error checking and retry
+  MAX_RETRIES=3
+  RETRY_COUNT=0
+  DOWNLOAD_SUCCESS=false
+
+  while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ "$DOWNLOAD_SUCCESS" = "false" ]; do
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    echo "Download attempt $RETRY_COUNT of $MAX_RETRIES..."
+
+    if curl -fSL --retry 3 --retry-delay 2 "$DEB_URL" -o /tmp/cloudflared.deb 2>&1; then
+      # Verify download succeeded and file is valid
+      if [ -f /tmp/cloudflared.deb ]; then
+        FILE_SIZE=$(stat -c%s /tmp/cloudflared.deb 2>/dev/null || stat -f%z /tmp/cloudflared.deb 2>/dev/null)
+        FILE_TYPE=$(file /tmp/cloudflared.deb 2>/dev/null | head -1)
+
+        echo "Downloaded file size: $FILE_SIZE bytes"
+        echo "File type: $FILE_TYPE"
+
+        # Check if it's actually a deb package (should be > 1MB and contain "Debian")
+        if [ "$FILE_SIZE" -gt 1000000 ] && echo "$FILE_TYPE" | grep -qi "debian"; then
+          DOWNLOAD_SUCCESS=true
+          echo -e "\${GREEN}✓ Download verified\${NC}"
+        else
+          echo -e "\${YELLOW}⚠ Downloaded file doesn't look like a valid .deb package\${NC}"
+          rm -f /tmp/cloudflared.deb
+          sleep 2
+        fi
+      else
+        echo -e "\${YELLOW}⚠ Download file not found\${NC}"
+        sleep 2
+      fi
+    else
+      echo -e "\${YELLOW}⚠ Download failed, retrying...\${NC}"
+      rm -f /tmp/cloudflared.deb
+      sleep 2
+    fi
+  done
+
+  if [ "$DOWNLOAD_SUCCESS" = "false" ]; then
+    echo -e "\${RED}✗ Failed to download cloudflared after $MAX_RETRIES attempts\${NC}"
+    echo "You can try manually installing cloudflared:"
+    echo "  curl -fSL $DEB_URL -o /tmp/cloudflared.deb && dpkg -i /tmp/cloudflared.deb"
+    exit 1
+  fi
+
   dpkg -i /tmp/cloudflared.deb
-  rm /tmp/cloudflared.deb
+  rm -f /tmp/cloudflared.deb
   echo -e "\${GREEN}✓ cloudflared installed\${NC}"
 else
   echo -e "\${GREEN}✓ cloudflared already installed\${NC}"
