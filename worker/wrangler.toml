@@ -1,0 +1,23 @@
+name = "fleet-setup"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+account_id = "b62c683522b0480cb5cf56b57dc6ba77"
+workers_dev = false
+
+# Routes for fleet management (single domain)
+routes = [
+  { pattern = "fleet.aguakmze.ro/*", zone_id = "dc57ebbf78af9984015c7762b4fee21d" }
+]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "h2os-fleet-db"
+database_id = "0f69561b-51bd-4918-a5ff-f92308c9292e"
+
+[vars]
+# Non-secret variables go here
+
+# Secrets (set via wrangler secret put):
+# SETUP_PASSWORD - the setup password
+# CF_API_KEY - Cloudflare Global API Key
+# CF_EMAIL - Cloudflare account email
