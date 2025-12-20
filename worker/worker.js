@@ -161,7 +161,7 @@ async function handleRegister(request, env, corsHeaders) {
     // Delete old tunnel if reassigning (from our DB)
     if (existingDevice?.tunnel_id && reassign) {
       await fetch(
-        `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/cfd_tunnel/${existingDevice.tunnel_id}`,
+        `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/cfd_tunnel/${existingDevice.tunnel_id}?cascade=true`,
         { method: 'DELETE', headers: cfHeaders }
       );
     }
@@ -174,14 +174,18 @@ async function handleRegister(request, env, corsHeaders) {
     const listData = await listTunnelsResponse.json();
 
     if (listData.result?.length > 0) {
-      // Found existing tunnel(s) with this name - delete them
+      // Found existing tunnel(s) with this name - force delete them (cascade=true removes active connections)
       for (const tunnel of listData.result) {
-        console.log(`Deleting existing tunnel: ${tunnel.id} (${tunnel.name})`);
-        await fetch(
-          `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/cfd_tunnel/${tunnel.id}`,
+        console.log(`Force deleting tunnel: ${tunnel.id} (${tunnel.name})`);
+        const delRes = await fetch(
+          `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/cfd_tunnel/${tunnel.id}?cascade=true`,
           { method: 'DELETE', headers: cfHeaders }
         );
+        const delData = await delRes.json();
+        console.log(`Delete result: ${JSON.stringify(delData)}`);
       }
+      // Wait a moment for deletion to propagate
+      await new Promise(r => setTimeout(r, 2000));
     }
 
     // Create new tunnel for this device
