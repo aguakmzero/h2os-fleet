@@ -158,12 +158,30 @@ async function handleRegister(request, env, corsHeaders) {
     const tokenData = await tokenResponse.json();
     tunnelToken = tokenData.result;
   } else {
-    // Delete old tunnel if reassigning
+    // Delete old tunnel if reassigning (from our DB)
     if (existingDevice?.tunnel_id && reassign) {
       await fetch(
         `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/cfd_tunnel/${existingDevice.tunnel_id}`,
         { method: 'DELETE', headers: cfHeaders }
       );
+    }
+
+    // Also check Cloudflare directly for tunnel with this name (might exist but not in our DB)
+    const listTunnelsResponse = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/cfd_tunnel?name=${encodeURIComponent(tunnelName)}`,
+      { headers: cfHeaders }
+    );
+    const listData = await listTunnelsResponse.json();
+
+    if (listData.result?.length > 0) {
+      // Found existing tunnel(s) with this name - delete them
+      for (const tunnel of listData.result) {
+        console.log(`Deleting existing tunnel: ${tunnel.id} (${tunnel.name})`);
+        await fetch(
+          `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/cfd_tunnel/${tunnel.id}`,
+          { method: 'DELETE', headers: cfHeaders }
+        );
+      }
     }
 
     // Create new tunnel for this device
