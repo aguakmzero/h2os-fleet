@@ -1,0 +1,13 @@
+name = "fleet-dashboard"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+account_id = "b62c683522b0480cb5cf56b57dc6ba77"
+workers_dev = false
+
+routes = [
+  { pattern = "fleet.aguakmze.ro/", zone_id = "dc57ebbf78af9984015c7762b4fee21d" },
+  { pattern = "fleet.aguakmze.ro/dashboard", zone_id = "dc57ebbf78af9984015c7762b4fee21d" }
+]
+
+# No database needed - dashboard fetches from API worker
+# No secrets needed - all data via API worker

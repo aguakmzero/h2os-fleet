@@ -2,20 +2,83 @@
 
 Fleet management infrastructure for H2OS Raspberry Pi devices. Provides remote access (SSH, VNC, screenshots) and status monitoring via Cloudflare Tunnels.
 
+## Development Process
+
+**IMPORTANT: Follow spec-driven development.**
+
+### 1. Research → Decision → Spec → Build → Document
+
+Before making changes:
+1. **Research**: Understand the problem, check existing patterns
+2. **Decision**: Document why you're choosing an approach in `specs/decisions/`
+3. **Spec**: Write/update spec in `specs/` BEFORE coding
+4. **Build**: Implement according to spec
+5. **Document**: Update CLAUDE.md and README if needed
+
+### 2. Specs Location
+
+```
+specs/
+├── architecture.md      # Overall system architecture
+├── workers/
+│   ├── setup.md         # Setup worker spec
+│   ├── api.md           # API worker spec
+│   └── dashboard.md     # Dashboard worker spec
+├── device/
+│   └── status-server.md # Pi status server spec
+└── decisions/           # Architecture decision records
+```
+
+### 3. Versioning
+
+- **Git tags**: Use semver tags (v1.0.0, v1.1.0, etc.) for releases
+- **Worker version**: Each worker shows its version in responses/UI
+- **Version format**: Git short hash for dev, tag for releases
+
+### 4. Deployment Workflow
+
+```bash
+# 1. Make changes in feature branch
+git checkout -b feature/my-change
+
+# 2. Update relevant spec
+# 3. Implement changes
+# 4. Test locally: npx wrangler dev --remote
+
+# 5. Commit with clear message
+git commit -m "feat: description of change"
+
+# 6. Deploy to production
+npx wrangler deploy
+
+# 7. Merge to main and push
+git checkout main && git merge feature/my-change && git push
+```
+
+### 5. Local Development
+
+```bash
+cd ~/Sites/h2os/fleet/workers/<worker-name>
+CLOUDFLARE_API_KEY=<key> CLOUDFLARE_EMAIL=tech@aguakmzero.com npx wrangler dev --remote
+```
+
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Cloudflare Edge                              │
-│  ┌──────────────────┐  ┌──────────────────────────────────────┐ │
-│  │ fleet.aguakmze.ro │  │ DEVICE-fleet.aguakmze.ro            │ │
-│  │   (Worker)        │  │   (Per-device tunnel)               │ │
-│  │   - Dashboard     │  │   /status → port 8081               │ │
-│  │   - Setup script  │  │   /screenshot → port 8081           │ │
-│  │   - D1 database   │  │   /vnc.html → port 6080             │ │
-│  └──────────────────┘  │   SSH → port 22                      │ │
-│                        └──────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Cloudflare Edge                               │
+│  ┌────────────────────────────────────┐                             │
+│  │ fleet.aguakmze.ro                  │                             │
+│  │                                    │                             │
+│  │  /dashboard    → dashboard-worker  │  ┌────────────────────────┐ │
+│  │  /api/*        → api-worker        │  │ DEVICE-fleet.aguakmze.ro│ │
+│  │  /setup        → setup-worker      │  │   (Per-device tunnel)  │ │
+│  │                                    │  │   /status → :8081      │ │
+│  │  All share: D1 database, CF Access │  │   /screenshot → :8081  │ │
+│  └────────────────────────────────────┘  │   /vnc.html → :6080    │ │
+│                                          │   SSH → :22            │ │
+│                                          └────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
                                     │
                     ┌───────────────┼───────────────┐
                     ▼               ▼               ▼
@@ -27,10 +90,20 @@ Fleet management infrastructure for H2OS Raspberry Pi devices. Provides remote a
 
 ## Key Components
 
-### 1. Cloudflare Worker (`worker/`)
-- **Dashboard**: `fleet.aguakmze.ro/dashboard` - Shows all devices, status, VNC links
-- **Setup Script**: `fleet.aguakmze.ro/setup` - Bootstrap script for new devices
-- **API**: Device registration, tunnel creation, D1 database
+### 1. Cloudflare Workers (`workers/`)
+
+Three separate workers, each focused on one concern:
+
+| Worker | Route | Purpose |
+|--------|-------|---------|
+| `setup-worker` | `/setup` | Bootstrap script for new devices |
+| `api-worker` | `/api/*` | REST API, D1 database operations |
+| `dashboard-worker` | `/dashboard` | Web UI for fleet management |
+
+All workers share:
+- Same D1 database (`h2os-fleet-db`)
+- Same Cloudflare Access authentication
+- Same domain (`fleet.aguakmze.ro`)
 
 ### 2. Pi Status Server (`scripts/pi-status-server.py`)
 HTTP server running on each Pi (port 8081):
