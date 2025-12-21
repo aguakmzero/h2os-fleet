@@ -619,7 +619,6 @@ function getDashboardHTML() {
     .header {
       background: linear-gradient(180deg, #0f172a 0%, var(--bg-dark) 100%);
       border-bottom: 1px solid var(--border);
-      padding: 1rem 1.5rem;
       position: sticky;
       top: 0;
       z-index: 50;
@@ -628,6 +627,7 @@ function getDashboardHTML() {
     .header-content {
       max-width: 1600px;
       margin: 0 auto;
+      padding: 1rem 1.5rem;
     }
     .header-top {
       display: flex;
@@ -707,15 +707,37 @@ function getDashboardHTML() {
     .controls-row {
       display: flex;
       gap: 0.75rem;
-      align-items: center;
+      align-items: flex-end;
       flex-wrap: wrap;
+    }
+
+    /* Control Section (label above content) */
+    .control-section {
+      display: flex;
+      flex-direction: column;
+      gap: 0.375rem;
+    }
+    .control-section-label {
+      font-size: 0.6rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    /* Section Divider (vertical line) */
+    .section-divider {
+      width: 1px;
+      height: 20px;
+      background: var(--border-light);
+      align-self: flex-end;
+      margin-bottom: 0.5rem;
     }
 
     /* Search */
     .search-box {
-      flex: 1;
       min-width: 200px;
-      max-width: 300px;
+      max-width: 280px;
       position: relative;
     }
     .search-box input {
@@ -759,6 +781,9 @@ function getDashboardHTML() {
       color: var(--text-secondary);
       cursor: pointer;
       transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
     }
     .filter-pill:hover { background: var(--border-light); color: var(--text-primary); }
     .filter-pill.active {
@@ -766,6 +791,47 @@ function getDashboardHTML() {
       border-color: var(--accent-blue);
       color: var(--accent-cyan);
     }
+    .filter-pill .count {
+      font-size: 0.7rem;
+      opacity: 0.8;
+    }
+
+    /* Sort Pills */
+    .sort-pills {
+      display: flex;
+      gap: 0.375rem;
+    }
+    .sort-pill {
+      padding: 0.375rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      background: var(--border);
+      border: 1px solid transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .sort-pill:hover { background: var(--border-light); color: var(--text-primary); }
+    .sort-pill.active {
+      background: rgba(34, 197, 94, 0.15);
+      border-color: var(--accent-green);
+      color: var(--accent-green);
+    }
+
+    /* Location Dropdown */
+    .location-select {
+      background: var(--border);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 0.375rem 0.75rem;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      cursor: pointer;
+      outline: none;
+      min-width: 140px;
+    }
+    .location-select:focus { border-color: var(--accent-cyan); }
 
     /* Sort & Auto-refresh */
     .control-group {
@@ -791,11 +857,47 @@ function getDashboardHTML() {
     }
     .control-select:focus { border-color: var(--accent-cyan); }
 
+    /* Auto-refresh dropdown */
+    .auto-select {
+      background: var(--border);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 0.375rem 0.75rem;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      cursor: pointer;
+      outline: none;
+    }
+    .auto-select:focus { border-color: var(--accent-cyan); }
+
     /* Auto-refresh toggle */
     .auto-refresh-toggle {
       display: flex;
       align-items: center;
       gap: 0.5rem;
+    }
+
+    /* Responsive: collapse pills to dropdowns on medium screens */
+    @media (max-width: 1100px) and (min-width: 769px) {
+      .control-section-label { display: none; }
+      .section-divider { display: none; }
+      .filter-pills { display: none; }
+      .sort-pills { display: none; }
+      .filter-dropdown { display: block; }
+      .sort-dropdown { display: block; }
+    }
+    .filter-dropdown, .sort-dropdown { display: none; }
+    @media (max-width: 1100px) and (min-width: 769px) {
+      .filter-dropdown, .sort-dropdown {
+        display: block;
+        background: var(--border);
+        border: 1px solid var(--border-light);
+        border-radius: 8px;
+        padding: 0.375rem 0.75rem;
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        cursor: pointer;
+      }
     }
     .toggle-switch {
       position: relative;
@@ -848,7 +950,7 @@ function getDashboardHTML() {
     .main {
       max-width: 1600px;
       margin: 0 auto;
-      padding: 1.5rem;
+      padding: 1rem 1.5rem;
     }
 
     /* Unified Grid */
@@ -1039,6 +1141,7 @@ function getDashboardHTML() {
       border-radius: 8px;
       padding: 0.75rem;
       margin-bottom: 0.75rem;
+      overflow: hidden;
     }
     .services-header {
       display: flex;
@@ -1090,6 +1193,7 @@ function getDashboardHTML() {
       gap: 0.25rem;
       font-size: 0.7rem;
       color: var(--text-secondary);
+      overflow: hidden;
     }
     .service-dot {
       width: 5px;
@@ -1122,6 +1226,7 @@ function getDashboardHTML() {
       display: flex;
       gap: 0.5rem;
       align-items: center;
+      justify-content: flex-end;
     }
     .btn {
       flex: 1;
@@ -1171,6 +1276,25 @@ function getDashboardHTML() {
     .btn-icon.loading svg { animation: spin 1s linear infinite; }
     .btn-icon.copied { background: rgba(16, 185, 129, 0.2); color: var(--accent-green); border-color: var(--accent-green); }
     .btn-icon svg { width: 14px; height: 14px; }
+    /* VNC button (icon-only, blue) */
+    .btn-vnc {
+      flex: 0 0 auto;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-cyan) 100%);
+      border: none;
+      border-radius: 6px;
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .btn-vnc:hover { filter: brightness(1.1); }
+    .btn-vnc svg { width: 14px; height: 14px; }
 
     /* Card Footer */
     .card-footer {
@@ -1511,24 +1635,49 @@ function getDashboardHTML() {
           </svg>
           <input type="text" id="search-input" placeholder="Search devices..." oninput="handleSearch(this.value)">
         </div>
-        <div class="filter-pills" id="filter-pills">
-          <button class="filter-pill active" data-status="all" onclick="setStatusFilter('all')">All</button>
-          <button class="filter-pill" data-status="healthy" onclick="setStatusFilter('healthy')">Healthy</button>
-          <button class="filter-pill" data-status="partial" onclick="setStatusFilter('partial')">Partial</button>
-          <button class="filter-pill" data-status="offline" onclick="setStatusFilter('offline')">Offline</button>
+        <div class="section-divider"></div>
+        <div class="control-section">
+          <span class="control-section-label">Status</span>
+          <div class="filter-pills" id="filter-pills">
+            <button class="filter-pill active" data-status="all" onclick="setStatusFilter('all')">All <span class="count" id="count-all">(0)</span></button>
+            <button class="filter-pill" data-status="healthy" onclick="setStatusFilter('healthy')">Healthy <span class="count" id="count-healthy">(0)</span></button>
+            <button class="filter-pill" data-status="partial" onclick="setStatusFilter('partial')">Partial <span class="count" id="count-partial">(0)</span></button>
+            <button class="filter-pill" data-status="offline" onclick="setStatusFilter('offline')">Offline <span class="count" id="count-offline">(0)</span></button>
+          </div>
+          <select class="filter-dropdown" id="filter-dropdown" onchange="setStatusFilter(this.value)">
+            <option value="all">All</option>
+            <option value="healthy">Healthy</option>
+            <option value="partial">Partial</option>
+            <option value="offline">Offline</option>
+          </select>
         </div>
-        <div class="control-group">
-          <span class="control-label">Sort</span>
-          <select class="control-select" id="sort-select" onchange="setSortBy(this.value)">
+        <div class="section-divider"></div>
+        <div class="control-section">
+          <span class="control-section-label">Location</span>
+          <select class="location-select" id="location-select" onchange="setLocationFilter(this.value)">
+            <option value="all">All Locations</option>
+          </select>
+        </div>
+        <div class="section-divider"></div>
+        <div class="control-section">
+          <span class="control-section-label">Sort</span>
+          <div class="sort-pills" id="sort-pills">
+            <button class="sort-pill active" data-sort="status" onclick="setSortBy('status')">Status</button>
+            <button class="sort-pill" data-sort="name" onclick="setSortBy('name')">Name</button>
+            <button class="sort-pill" data-sort="location" onclick="setSortBy('location')">Location</button>
+            <button class="sort-pill" data-sort="lastSeen" onclick="setSortBy('lastSeen')">Last Seen</button>
+          </div>
+          <select class="sort-dropdown" id="sort-dropdown" onchange="setSortBy(this.value)">
             <option value="status">Status</option>
             <option value="name">Name</option>
             <option value="location">Location</option>
             <option value="lastSeen">Last Seen</option>
           </select>
         </div>
-        <div class="control-group auto-refresh-toggle">
-          <span class="control-label">Auto</span>
-          <select class="control-select" id="auto-refresh-select" onchange="setAutoRefresh(this.value)">
+        <div class="section-divider"></div>
+        <div class="control-section">
+          <span class="control-section-label">Auto</span>
+          <select class="auto-select" id="auto-refresh-select" onchange="setAutoRefresh(this.value)">
             <option value="0">Off</option>
             <option value="30">30s</option>
             <option value="60">1m</option>
@@ -1579,6 +1728,10 @@ function getDashboardHTML() {
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
       <span>Filter</span>
     </button>
+    <button class="mobile-nav-btn" onclick="openMobileSheet('location')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      <span>Location</span>
+    </button>
     <button class="mobile-nav-btn" onclick="openMobileSheet('sort')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5h10M11 9h7M11 13h4M3 17l3 3 3-3M6 18V4"/></svg>
       <span>Sort</span>
@@ -1617,7 +1770,10 @@ function getDashboardHTML() {
     };
     let searchTerm = '';
     let statusFilter = 'all';
+    let locationFilter = 'all';
+    let allLocations = [];
     let isRefreshing = false;
+    let deviceServicesHTML = {}; // Cache services HTML for re-render
     let autoRefreshTimer = null;
     let savePrefsTimeout = null;
 
@@ -1631,6 +1787,7 @@ function getDashboardHTML() {
       chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>',
       location: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
       info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>',
+      eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
       camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
       terminal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>',
       monitor: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>'
@@ -1648,7 +1805,10 @@ function getDashboardHTML() {
         if (data.collapsedLocations) userPrefs.collapsedLocations = data.collapsedLocations;
 
         // Apply preferences to UI
-        document.getElementById('sort-select').value = userPrefs.sortBy;
+        document.querySelectorAll('.sort-pill').forEach(p => p.classList.remove('active'));
+        const activeSortPill = document.querySelector('.sort-pill[data-sort="' + userPrefs.sortBy + '"]');
+        if (activeSortPill) activeSortPill.classList.add('active');
+        document.getElementById('sort-dropdown').value = userPrefs.sortBy;
         document.getElementById('auto-refresh-select').value = userPrefs.autoRefreshInterval;
         if (userPrefs.autoRefreshInterval > 0) {
           startAutoRefresh(userPrefs.autoRefreshInterval);
@@ -1682,12 +1842,36 @@ function getDashboardHTML() {
         devices = data.devices;
         document.getElementById('skeleton-loader').style.display = 'none';
         document.getElementById('devices-container').style.display = 'block';
+        populateLocationDropdown();
         renderDevices();
         checkAllStatus();
         updateLastUpdate();
       } catch (err) {
         showToast('Error loading devices', true);
       }
+    }
+
+    // Populate location dropdown
+    function populateLocationDropdown() {
+      const locations = new Set();
+      devices.forEach(d => {
+        const loc = (d.location || d.friendly_name || 'Unknown').trim();
+        if (loc) locations.add(loc);
+      });
+      allLocations = Array.from(locations).sort();
+
+      const select = document.getElementById('location-select');
+      select.innerHTML = '<option value="all">All Locations</option>';
+      allLocations.forEach(loc => {
+        select.innerHTML += '<option value="' + loc.replace(/"/g, '&quot;') + '">' + loc + '</option>';
+      });
+    }
+
+    // Set location filter
+    function setLocationFilter(loc) {
+      locationFilter = loc;
+      document.getElementById('location-select').value = loc;
+      renderDevices();
     }
 
     // Check all device statuses
@@ -1726,19 +1910,22 @@ function getDashboardHTML() {
         if (servicesDiv) {
           const pct = data.total > 0 ? Math.round((data.running / data.total) * 100) : 0;
           const fillClass = pct === 100 ? '' : pct >= 50 ? 'partial' : 'bad';
-          servicesDiv.innerHTML =
-            '<div class="services-header"><span class="services-title">Services</span><div class="services-progress"><div class="progress-bar"><div class="progress-fill ' + fillClass + '" style="width:' + pct + '%"></div></div><span class="progress-text">' + data.running + '/' + data.total + '</span></div></div>' +
+          const html = '<div class="services-header"><span class="services-title">Services</span><div class="services-progress"><div class="progress-bar"><div class="progress-fill ' + fillClass + '" style="width:' + pct + '%"></div></div><span class="progress-text">' + data.running + '/' + data.total + '</span></div></div>' +
             '<div class="services-list">' + Object.entries(services).map(([name, running]) =>
               '<div class="service-item"><span class="service-dot ' + (running ? 'running' : 'stopped') + '"></span><span class="service-name">' + name.replace('.sh', '').replace('.py', '') + '</span></div>'
             ).join('') + '</div>' +
             '<div class="uptime-text">Uptime: ' + data.uptime + '</div>';
+          servicesDiv.innerHTML = html;
+          deviceServicesHTML[device.device_id] = html; // Cache for re-render
         }
       } catch (err) {
         deviceStatuses[device.device_id] = 'offline';
         badge.className = 'status-badge offline';
         badge.innerHTML = '<span class="dot"></span><span class="status-text">Offline</span>';
         if (servicesDiv) {
-          servicesDiv.innerHTML = '<div class="services-header"><span class="services-title">Services</span><div class="services-progress"><div class="progress-bar"><div class="progress-fill bad" style="width:0%"></div></div><span class="progress-text">-/-</span></div></div><div class="services-placeholder" style="color:var(--accent-red)">Unable to connect</div>';
+          const html = '<div class="services-header"><span class="services-title">Services</span><div class="services-progress"><div class="progress-bar"><div class="progress-fill bad" style="width:0%"></div></div><span class="progress-text">-/-</span></div></div><div class="services-placeholder" style="color:var(--accent-red)">Unable to connect</div>';
+          servicesDiv.innerHTML = html;
+          deviceServicesHTML[device.device_id] = html; // Cache for re-render
         }
       }
     }
@@ -1758,10 +1945,17 @@ function getDashboardHTML() {
       const healthy = Object.values(deviceStatuses).filter(s => s === 'healthy').length;
       const partial = Object.values(deviceStatuses).filter(s => s === 'partial').length;
       const offline = Object.values(deviceStatuses).filter(s => s === 'offline').length;
+      const total = devices.length;
 
       document.getElementById('stat-healthy').textContent = healthy;
       document.getElementById('stat-partial').textContent = partial;
       document.getElementById('stat-offline').textContent = offline;
+
+      // Update filter pill counts
+      document.getElementById('count-all').textContent = '(' + total + ')';
+      document.getElementById('count-healthy').textContent = '(' + healthy + ')';
+      document.getElementById('count-partial').textContent = '(' + partial + ')';
+      document.getElementById('count-offline').textContent = '(' + offline + ')';
 
       // Update tab title if offline
       if (offline > 0) {
@@ -1838,12 +2032,19 @@ function getDashboardHTML() {
       statusFilter = status;
       document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
       document.querySelector('.filter-pill[data-status="' + status + '"]').classList.add('active');
+      document.getElementById('filter-dropdown').value = status;
       renderDevices();
     }
 
     // Sort
     function setSortBy(sortBy) {
       userPrefs.sortBy = sortBy;
+      // Update pills
+      document.querySelectorAll('.sort-pill').forEach(p => p.classList.remove('active'));
+      const activePill = document.querySelector('.sort-pill[data-sort="' + sortBy + '"]');
+      if (activePill) activePill.classList.add('active');
+      // Update dropdown
+      document.getElementById('sort-dropdown').value = sortBy;
       savePreferences();
       renderDevices();
     }
@@ -1889,11 +2090,12 @@ function getDashboardHTML() {
     function getFilteredDevices() {
       return devices.filter(d => {
         const name = (d.friendly_name || d.device_id).toLowerCase();
-        const loc = (d.location || '').toLowerCase();
-        const matchesSearch = !searchTerm || name.includes(searchTerm) || loc.includes(searchTerm) || d.device_id.toLowerCase().includes(searchTerm);
+        const loc = (d.location || d.friendly_name || 'Unknown').trim();
+        const matchesSearch = !searchTerm || name.includes(searchTerm) || loc.toLowerCase().includes(searchTerm) || d.device_id.toLowerCase().includes(searchTerm);
         const status = deviceStatuses[d.device_id] || 'unknown';
         const matchesStatus = statusFilter === 'all' || status === statusFilter || (statusFilter === 'healthy' && status === 'healthy') || (statusFilter === 'partial' && status === 'partial') || (statusFilter === 'offline' && (status === 'offline' || status === 'unknown'));
-        return matchesSearch && matchesStatus;
+        const matchesLocation = locationFilter === 'all' || loc === locationFilter;
+        return matchesSearch && matchesStatus && matchesLocation;
       }).sort((a, b) => {
         const statusOrder = { healthy: 0, partial: 1, offline: 2, unknown: 3 };
         const aStatus = deviceStatuses[a.device_id] || 'unknown';
@@ -1966,6 +2168,27 @@ function getDashboardHTML() {
 
       html += '</div>';
       container.innerHTML = html;
+      restoreCachedStatuses();
+    }
+
+    // Restore cached statuses after re-render
+    function restoreCachedStatuses() {
+      for (const deviceId of Object.keys(deviceStatuses)) {
+        const badge = document.getElementById('status-' + deviceId);
+        const servicesDiv = document.getElementById('services-' + deviceId);
+        const status = deviceStatuses[deviceId];
+
+        if (badge && status) {
+          const statusClass = status === 'healthy' ? 'online' : status === 'partial' ? 'partial' : 'offline';
+          const statusText = status === 'healthy' ? 'Online' : status === 'partial' ? 'Partial' : 'Offline';
+          badge.className = 'status-badge ' + statusClass;
+          badge.innerHTML = '<span class="dot"></span><span class="status-text">' + statusText + '</span>';
+        }
+
+        if (servicesDiv && deviceServicesHTML[deviceId]) {
+          servicesDiv.innerHTML = deviceServicesHTML[deviceId];
+        }
+      }
     }
 
     // Render single card
@@ -1990,11 +2213,11 @@ function getDashboardHTML() {
         (showLocation && device.location ? '<div class="location-tag">' + icons.location + device.location + '</div>' : '') +
         '<div class="services" id="services-' + device.device_id + '"><div class="services-header"><span class="services-title">Services</span><div class="services-progress"><div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div><span class="progress-text">-/-</span></div></div><div class="services-placeholder">Checking...</div></div>' +
         '<div class="buttons">' +
-          '<button class="btn-icon" onclick="showDetails(\\'' + device.device_id + '\\')" title="Details">' + icons.info + '</button>' +
+          '<button class="btn-icon" onclick="showDetails(\\'' + device.device_id + '\\')" title="Details">' + icons.eye + '</button>' +
           '<button class="btn-icon" onclick="showScreenshot(\\'' + device.hostname + '\\', \\'' + displayName.replace(/'/g, "\\\\'") + '\\')" title="Screenshot">' + icons.camera + '</button>' +
-          '<button class="btn btn-secondary" onclick="refreshSingleDevice(\\'' + device.device_id + '\\', this)">' + icons.refresh + ' Refresh</button>' +
-          '<button class="btn btn-secondary" onclick="copySSH(\\'' + device.hostname + '\\', this)">' + icons.terminal + ' SSH</button>' +
-          '<a class="btn btn-primary" href="https://' + device.hostname + '/vnc.html" target="_blank">' + icons.monitor + ' VNC</a>' +
+          '<button class="btn-icon" onclick="refreshSingleDevice(\\'' + device.device_id + '\\', this)" title="Refresh">' + icons.refresh + '</button>' +
+          '<button class="btn-icon" onclick="copySSH(\\'' + device.hostname + '\\', this)" title="Copy SSH">' + icons.terminal + '</button>' +
+          '<a class="btn btn-vnc" href="https://' + device.hostname + '/vnc.html" target="_blank" title="Open VNC">' + icons.monitor + '</a>' +
         '</div>' +
         '<div class="card-footer">' +
           '<span class="last-seen">Last: ' + (device.last_seen ? formatTime(device.last_seen) : 'Never') + '</span>' +
@@ -2117,6 +2340,14 @@ function getDashboardHTML() {
           '<button class="sheet-option' + (statusFilter === 'partial' ? ' active' : '') + '" onclick="setStatusFilter(\\'partial\\');closeMobileSheet()">Partial</button>' +
           '<button class="sheet-option' + (statusFilter === 'offline' ? ' active' : '') + '" onclick="setStatusFilter(\\'offline\\');closeMobileSheet()">Offline</button>' +
           '</div></div>';
+      } else if (type === 'location') {
+        html = '<div class="sheet-title">Location</div>' +
+          '<div class="sheet-section"><div class="sheet-options">' +
+          '<button class="sheet-option' + (locationFilter === 'all' ? ' active' : '') + '" onclick="setLocationFilter(\\'all\\');closeMobileSheet()">All Locations</button>';
+        allLocations.forEach(loc => {
+          html += '<button class="sheet-option' + (locationFilter === loc ? ' active' : '') + '" onclick="setLocationFilter(\\'' + loc.replace(/'/g, "\\\\'") + '\\');closeMobileSheet()">' + loc + '</button>';
+        });
+        html += '</div></div>';
       } else if (type === 'sort') {
         html = '<div class="sheet-title">Sort By</div>' +
           '<div class="sheet-section"><div class="sheet-options">' +
@@ -2504,18 +2735,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path in ['/', '/status']:
             svcs = {
+                'groundwater-connection': check_service('groundwater-connection'),
                 'groundwater-genie-manager': check_service('groundwater-genie-manager'),
+                'groundwater-updater': check_service('groundwater-updater'),
                 'kmzero.sh': check_process('kmzero.sh'),
                 'groundwater.sh': check_process('groundwater.sh'),
                 'main.py': check_process('main.py')
             }
             running = sum(1 for v in svcs.values() if v)
-            status = 'healthy' if running == 4 else 'partial' if running else 'offline'
+            status = 'healthy' if running == 6 else 'partial' if running else 'offline'
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
-            self.wfile.write(json.dumps({'status': status, 'services': svcs, 'running': running, 'total': 4, 'uptime': get_uptime()}).encode())
+            self.wfile.write(json.dumps({'status': status, 'services': svcs, 'running': running, 'total': 6, 'uptime': get_uptime()}).encode())
         elif self.path == '/screenshot':
             data = take_screenshot()
             if data:
