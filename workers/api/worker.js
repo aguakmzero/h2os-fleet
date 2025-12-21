@@ -24,10 +24,13 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    // For credentials to work, origin must be specific (not *)
+    const origin = request.headers.get('Origin') || '*';
     const corsHeaders = {
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': origin,
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Credentials': 'true',
     };
 
     if (request.method === 'OPTIONS') {
@@ -429,7 +432,27 @@ async function handleCloudflaredDownload(url, corsHeaders) {
 }
 
 function getUserEmail(request) {
-  return request.headers.get('CF-Access-Authenticated-User-Email') || 'anonymous';
+  // First try the CF Access header (set when endpoint is protected)
+  const headerEmail = request.headers.get('CF-Access-Authenticated-User-Email');
+  if (headerEmail) return headerEmail;
+
+  // Try to decode CF Access JWT from cookie (works even when endpoint is public)
+  const cookies = request.headers.get('Cookie') || '';
+  const cfAuthMatch = cookies.match(/CF_Authorization=([^;]+)/);
+  if (cfAuthMatch) {
+    try {
+      // JWT is base64url encoded: header.payload.signature
+      const payload = cfAuthMatch[1].split('.')[1];
+      // Convert base64url to base64
+      const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+      const decoded = JSON.parse(atob(base64));
+      if (decoded.email) return decoded.email;
+    } catch (e) {
+      // Invalid JWT, fall through to anonymous
+    }
+  }
+
+  return 'anonymous';
 }
 
 async function ensurePreferencesTable(env) {

@@ -1252,7 +1252,7 @@ function getDashboardHTML() {
     // Load preferences
     async function loadPreferences() {
       try {
-        const res = await fetch(API_BASE + '/api/preferences');
+        const res = await fetch(API_BASE + '/api/preferences', { credentials: 'include' });
         const data = await res.json();
         if (data.pinnedDevices) userPrefs.pinnedDevices = data.pinnedDevices;
         if (data.sortBy) userPrefs.sortBy = data.sortBy;
@@ -1282,6 +1282,7 @@ function getDashboardHTML() {
           await fetch(API_BASE + '/api/preferences', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify(userPrefs)
           });
         } catch (err) {
