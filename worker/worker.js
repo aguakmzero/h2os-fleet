@@ -25,7 +25,7 @@
 const ACCOUNT_ID = 'b62c683522b0480cb5cf56b57dc6ba77';
 const ZONE_ID = 'dc57ebbf78af9984015c7762b4fee21d';
 const DOMAIN = 'aguakmze.ro';
-const VERSION = '36aae85'; // Update this with: git log -1 --format="%h"
+const VERSION = '052fd80'; // Update this with: git log -1 --format="%h"
 
 export default {
   async fetch(request, env) {
@@ -1947,9 +1947,7 @@ function getDashboardHTML() {
       });
 
       const locations = Object.keys(grouped).sort();
-      const showLocationHeaders = locations.length > 1;
-
-      // Build unified grid
+      // Build unified grid - all cards flow together, location shown as tag on each card
       let html = '<div class="devices-grid">';
 
       // Pinned section
@@ -1961,20 +1959,9 @@ function getDashboardHTML() {
         }
       }
 
-      // Location groups in unified grid
-      locations.forEach(locKey => {
-        const displayLoc = locationDisplayNames[locKey];
-        const isCollapsed = userPrefs.collapsedLocations.includes(locKey);
-        if (showLocationHeaders) {
-          html += '<div class="location-header' + (isCollapsed ? ' collapsed' : '') + '" onclick="toggleLocation(\\''+locKey.replace(/'/g, "\\\\'")+'\\')">';
-          html += '<span class="location-chevron">' + icons.chevron + '</span>';
-          html += '<span class="location-name">' + displayLoc + '</span>';
-          html += '<span class="location-count">' + grouped[locKey].length + '</span>';
-          html += '</div>';
-        }
-        grouped[locKey].forEach(d => {
-          html += renderCard(d, false, !showLocationHeaders, isCollapsed && showLocationHeaders);
-        });
+      // All unpinned cards in a single grid (no location headers breaking the flow)
+      unpinned.forEach(d => {
+        html += renderCard(d, false, true, false); // always show location tag
       });
 
       html += '</div>';
