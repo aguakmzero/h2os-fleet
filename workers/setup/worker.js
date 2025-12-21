@@ -55,7 +55,7 @@ echo -n "Setup password: "
 read -s PASSWORD
 echo ""
 
-VALID=$(curl -s -X POST "$SETUP_URL/api/validate" \\
+VALID=$(curl -s -X POST "$SETUP_URL/validate" \\
   -H "Content-Type: application/json" \\
   -d "{\\"password\\":\\"$PASSWORD\\"}" | grep -o '"valid":true' || true)
 
@@ -77,7 +77,7 @@ while true; do
     continue
   fi
 
-  CHECK_RESULT=$(curl -s -X POST "$SETUP_URL/api/check" \\
+  CHECK_RESULT=$(curl -s -X POST "$SETUP_URL/check" \\
     -H "Content-Type: application/json" \\
     -d "{\\"password\\":\\"$PASSWORD\\",\\"name\\":\\"$DEVICE_NAME\\"}")
 
@@ -116,7 +116,7 @@ echo ""
 echo "Registering device and creating tunnel..."
 
 # Step 3: Register (creates tunnel, returns token)
-REGISTER_RESULT=$(curl -s -X POST "$SETUP_URL/api/register" \\
+REGISTER_RESULT=$(curl -s -X POST "$SETUP_URL/register" \\
   -H "Content-Type: application/json" \\
   -d "{\\"password\\":\\"$PASSWORD\\",\\"name\\":\\"$DEVICE_NAME\\",\\"friendlyName\\":\\"$FRIENDLY_NAME\\",\\"location\\":\\"$LOCATION\\",\\"reassign\\":$REASSIGN}")
 
@@ -149,7 +149,7 @@ if ! command -v cloudflared &> /dev/null; then
 
   case "$ARCH" in
     arm64|armhf|amd64)
-      PROXY_URL="$SETUP_URL/api/cloudflared?arch=$ARCH"
+      PROXY_URL="$SETUP_URL/download/cloudflared?arch=$ARCH"
       GITHUB_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-\${ARCH}.deb"
       ;;
     *)
