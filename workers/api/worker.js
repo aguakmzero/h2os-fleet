@@ -212,9 +212,13 @@ async function handleRegister(request, env, corsHeaders) {
           ingress: [
             { hostname, path: '/status', service: 'http://localhost:8081' },
             { hostname, path: '/screenshot', service: 'http://localhost:8081' },
-            { hostname, path: '/screenshot/*', service: 'http://localhost:8081' },
-            { hostname, path: '/vnc.*', service: 'http://localhost:6080' },
-            { hostname, service: 'ssh://localhost:22' },
+            { hostname, path: '/vnc.html', service: 'http://localhost:6080' },
+            { hostname, path: '/vnc_lite.html', service: 'http://localhost:6080' },
+            { hostname, path: '/app', service: 'http://localhost:6080' },
+            { hostname, path: '/core', service: 'http://localhost:6080' },
+            { hostname, path: '/vendor', service: 'http://localhost:6080' },
+            { hostname, path: '/websockify', service: 'http://localhost:6080' },
+            { hostname, service: 'ssh://localhost:22' },  // SSH as catch-all for cloudflared access
             { service: 'http_status:404' },
           ],
         },

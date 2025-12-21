@@ -6,7 +6,7 @@
  * It communicates with the API worker for data.
  */
 
-const VERSION = 'ae00c63'; // Update with: git log -1 --format="%h"
+const VERSION = 'f161641-status'; // Update with: git log -1 --format="%h"
 
 export default {
   async fetch(request, env) {
@@ -574,7 +574,14 @@ function getDashboardHTML() {
       50% { opacity: 0.5; transform: scale(1.2); }
     }
 
-    /* Location Tag */
+    /* Location Row */
+    .location-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+      min-height: 1.5rem;
+    }
     .location-tag {
       display: inline-flex;
       align-items: center;
@@ -584,9 +591,16 @@ function getDashboardHTML() {
       border-radius: 4px;
       font-size: 0.65rem;
       color: var(--text-secondary);
-      margin-bottom: 0.75rem;
     }
     .location-tag svg { width: 10px; height: 10px; opacity: 0.7; }
+    .device-time-inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.65rem;
+      color: var(--text-secondary);
+    }
+    .device-time-inline svg { width: 10px; height: 10px; opacity: 0.7; }
 
     /* Services */
     .services {
@@ -672,6 +686,61 @@ function getDashboardHTML() {
       font-size: 0.65rem;
       color: var(--text-muted);
       margin-top: 0.375rem;
+    }
+    .quick-info {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--border);
+    }
+    .quick-info-item {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+      background: rgba(255,255,255,0.05);
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+    }
+    .quick-info-item svg {
+      width: 12px;
+      height: 12px;
+      opacity: 0.7;
+    }
+    .quick-info-item.mono {
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    }
+    .commit-date-line {
+      margin-top: 0.35rem;
+      margin-bottom: 0.25rem;
+      border-top: none;
+      padding-top: 0;
+    }
+    .commit-date-line .quick-info-item {
+      font-size: 0.6rem;
+      opacity: 0.8;
+    }
+    .device-time {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 1rem;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-top: 0.4rem;
+    }
+    .device-time span {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .device-time svg {
+      width: 12px;
+      height: 12px;
+      opacity: 0.6;
     }
 
     /* Buttons */
@@ -888,6 +957,22 @@ function getDashboardHTML() {
     .info-label { color: var(--text-muted); }
     .info-value { color: var(--text-secondary); text-align: right; max-width: 60%; word-break: break-all; }
     .info-value.mono { font-family: 'SF Mono', Monaco, monospace; font-size: 0.7rem; }
+    .modal-services-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.4rem;
+    }
+    .modal-service-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.4rem 0.6rem;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 6px;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+    .modal-service-item.stopped { color: var(--accent-red); opacity: 0.7; }
     .ssh-command {
       background: rgba(0, 0, 0, 0.3);
       border-radius: 8px;
@@ -1113,6 +1198,20 @@ function getDashboardHTML() {
         </div>
         <div class="section-divider"></div>
         <div class="control-section">
+          <span class="control-section-label">Model</span>
+          <div class="filter-pills" id="model-pills">
+            <button class="filter-pill active" data-model="all" onclick="setModelFilter('all')">All <span class="count" id="count-model-all">(0)</span></button>
+            <button class="filter-pill" data-model="pi5" onclick="setModelFilter('pi5')">Pi 5 <span class="count" id="count-model-pi5">(0)</span></button>
+            <button class="filter-pill" data-model="pi4" onclick="setModelFilter('pi4')">Pi 4 <span class="count" id="count-model-pi4">(0)</span></button>
+          </div>
+          <select class="filter-dropdown" id="model-dropdown" onchange="setModelFilter(this.value)">
+            <option value="all">All Models</option>
+            <option value="pi5">Pi 5</option>
+            <option value="pi4">Pi 4</option>
+          </select>
+        </div>
+        <div class="section-divider"></div>
+        <div class="control-section">
           <span class="control-section-label">Sort</span>
           <div class="sort-pills" id="sort-pills">
             <button class="sort-pill active" data-sort="status" onclick="setSortBy('status')">Status</button>
@@ -1216,6 +1315,7 @@ function getDashboardHTML() {
     // State
     let devices = [];
     let deviceStatuses = {};
+    let deviceStatusData = {}; // Full status response data
     let previousStatuses = {};
     let userPrefs = {
       pinnedDevices: [],
@@ -1227,6 +1327,7 @@ function getDashboardHTML() {
     let searchTerm = '';
     let statusFilter = 'all';
     let locationFilter = 'all';
+    let modelFilter = 'all';
     let allLocations = [];
     let isRefreshing = false;
     let deviceServicesHTML = {}; // Cache services HTML for re-render
@@ -1246,7 +1347,15 @@ function getDashboardHTML() {
       eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
       camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
       terminal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>',
-      monitor: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>'
+      monitor: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>',
+      temp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg>',
+      wifi: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg>',
+      branch: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>',
+      ram: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10v4M10 10v4M14 10v4M18 10v4"/></svg>',
+      disk: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>',
+      cpu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></svg>',
+      commit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><line x1="3" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="21" y2="12"/></svg>',
+      clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
     };
 
     // Load preferences
@@ -1357,6 +1466,7 @@ function getDashboardHTML() {
         const data = await res.json();
 
         deviceStatuses[device.device_id] = data.status;
+        deviceStatusData[device.device_id] = data; // Store full status data
 
         const statusClass = data.status === 'healthy' ? 'online' : data.status === 'partial' ? 'partial' : 'offline';
         const statusText = data.status === 'healthy' ? 'Online' : data.status === 'partial' ? 'Partial' : 'Offline';
@@ -1367,10 +1477,72 @@ function getDashboardHTML() {
         if (servicesDiv) {
           const pct = data.total > 0 ? Math.round((data.running / data.total) * 100) : 0;
           const fillClass = pct === 100 ? '' : pct >= 50 ? 'partial' : 'bad';
+
+          // Helper: format datetime nicely (21 Dec 2025, 05:33)
+          function formatDateTime(str) {
+            if (!str) return '';
+            try {
+              // Parse: "2025-12-21 05:33:43" or "2025-12-21 04:54:49 +0100"
+              const parts = str.trim().split(' ');
+              const datePart = parts[0]; // 2025-12-21
+              const timePart = parts[1]; // 05:33:43
+              const dp = datePart.split('-');
+              const tp = timePart.split(':');
+              const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+              return parseInt(dp[2]) + ' ' + months[parseInt(dp[1]) - 1] + ' ' + dp[0] + ', ' + tp[0] + ':' + tp[1];
+            } catch(e) { return str; }
+          }
+
+          // Helper: format device time without year (21 Dec, 05:33)
+          function formatDeviceTime(str) {
+            if (!str) return '';
+            try {
+              const parts = str.trim().split(' ');
+              const datePart = parts[0];
+              const timePart = parts[1];
+              const dp = datePart.split('-');
+              const tp = timePart.split(':');
+              const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+              return parseInt(dp[2]) + ' ' + months[parseInt(dp[1]) - 1] + ', ' + tp[0] + ':' + tp[1];
+            } catch(e) { return str; }
+          }
+
+          // Helper: shorten Pi model (Raspberry Pi 5 Model B Rev 1.0 -> Pi 5)
+          function shortPiModel(model) {
+            if (!model) return '';
+            const match = model.match(/Raspberry Pi (\\d)/);
+            return match ? 'Pi ' + match[1] : model;
+          }
+
+          // Build quick info lines
+          // Line 1: model, branch: commit @ date
+          const quickInfo1 = [];
+          if (data.pi_model) quickInfo1.push('<span class="quick-info-item" title="' + data.pi_model + '">' + icons.cpu + shortPiModel(data.pi_model) + '</span>');
+          if (data.branch || data.commit) {
+            let branchInfo = data.branch || '';
+            if (data.commit) branchInfo += ': ' + data.commit;
+            if (data.commit_date) branchInfo += ' @ ' + formatDeviceTime(data.commit_date);
+            quickInfo1.push('<span class="quick-info-item mono" title="Branch: Commit @ Date">' + icons.branch + branchInfo + '</span>');
+          }
+          const commitDateHtml = ''; // Now combined above
+          // Line 2: wifi, temp
+          const quickInfo2 = [];
+          if (data.wifi) quickInfo2.push('<span class="quick-info-item" title="WiFi Network">' + icons.wifi + data.wifi + '</span>');
+          if (data.temp) quickInfo2.push('<span class="quick-info-item" title="CPU Temperature">' + icons.temp + data.temp + '°C</span>');
+
+          let quickInfoHtml = '';
+          if (quickInfo1.length > 0) quickInfoHtml += '<div class="quick-info">' + quickInfo1.join('') + '</div>';
+          quickInfoHtml += commitDateHtml;
+          if (quickInfo2.length > 0) quickInfoHtml += '<div class="quick-info">' + quickInfo2.join('') + '</div>';
+
+          // Update device time in location row (outside services container)
+          const deviceTimeEl = document.getElementById('device-time-' + device.device_id);
+          if (deviceTimeEl && data.local_time) {
+            deviceTimeEl.innerHTML = icons.clock + formatDeviceTime(data.local_time);
+          }
+
           const html = '<div class="services-header"><span class="services-title">Services</span><div class="services-progress"><div class="progress-bar"><div class="progress-fill ' + fillClass + '" style="width:' + pct + '%"></div></div><span class="progress-text">' + data.running + '/' + data.total + '</span></div></div>' +
-            '<div class="services-list">' + Object.entries(services).map(([name, running]) =>
-              '<div class="service-item"><span class="service-dot ' + (running ? 'running' : 'stopped') + '"></span><span class="service-name">' + name.replace('.sh', '').replace('.py', '') + '</span></div>'
-            ).join('') + '</div>' +
+            quickInfoHtml +
             '<div class="uptime-text">Uptime: ' + data.uptime + '</div>';
           servicesDiv.innerHTML = html;
           deviceServicesHTML[device.device_id] = html; // Cache for re-render
@@ -1413,6 +1585,18 @@ function getDashboardHTML() {
       document.getElementById('count-healthy').textContent = '(' + healthy + ')';
       document.getElementById('count-partial').textContent = '(' + partial + ')';
       document.getElementById('count-offline').textContent = '(' + offline + ')';
+
+      // Update model filter counts
+      let pi5Count = 0, pi4Count = 0;
+      devices.forEach(d => {
+        const statusData = deviceStatusData[d.device_id] || {};
+        const piVersion = getPiVersion(statusData.pi_model);
+        if (piVersion === 'pi5') pi5Count++;
+        else if (piVersion === 'pi4') pi4Count++;
+      });
+      document.getElementById('count-model-all').textContent = '(' + total + ')';
+      document.getElementById('count-model-pi5').textContent = '(' + pi5Count + ')';
+      document.getElementById('count-model-pi4').textContent = '(' + pi4Count + ')';
 
       // Update tab title if offline
       if (offline > 0) {
@@ -1487,10 +1671,26 @@ function getDashboardHTML() {
     // Status filter
     function setStatusFilter(status) {
       statusFilter = status;
-      document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('#filter-pills .filter-pill').forEach(p => p.classList.remove('active'));
       document.querySelector('.filter-pill[data-status="' + status + '"]').classList.add('active');
       document.getElementById('filter-dropdown').value = status;
       renderDevices();
+    }
+
+    // Model filter
+    function setModelFilter(model) {
+      modelFilter = model;
+      document.querySelectorAll('#model-pills .filter-pill').forEach(p => p.classList.remove('active'));
+      document.querySelector('.filter-pill[data-model="' + model + '"]').classList.add('active');
+      document.getElementById('model-dropdown').value = model;
+      renderDevices();
+    }
+
+    // Helper to extract Pi version from pi_model string
+    function getPiVersion(piModel) {
+      if (!piModel) return 'unknown';
+      const match = piModel.match(/Raspberry Pi (\\d)/);
+      return match ? 'pi' + match[1] : 'unknown';
     }
 
     // Sort
@@ -1535,10 +1735,12 @@ function getDashboardHTML() {
       const cmd = 'ssh -o ProxyCommand="cloudflared access ssh --hostname %h" pizero@' + hostname;
       navigator.clipboard.writeText(cmd).then(() => {
         btn.classList.add('copied');
-        btn.innerHTML = icons.check + ' Copied!';
+        btn.innerHTML = icons.check;
+        btn.title = 'Copied!';
         setTimeout(() => {
           btn.classList.remove('copied');
-          btn.innerHTML = icons.terminal + ' SSH';
+          btn.innerHTML = icons.terminal;
+          btn.title = 'Copy SSH';
         }, 2000);
       });
     }
@@ -1552,7 +1754,10 @@ function getDashboardHTML() {
         const status = deviceStatuses[d.device_id] || 'unknown';
         const matchesStatus = statusFilter === 'all' || status === statusFilter || (statusFilter === 'healthy' && status === 'healthy') || (statusFilter === 'partial' && status === 'partial') || (statusFilter === 'offline' && (status === 'offline' || status === 'unknown'));
         const matchesLocation = locationFilter === 'all' || loc === locationFilter;
-        return matchesSearch && matchesStatus && matchesLocation;
+        const statusData = deviceStatusData[d.device_id] || {};
+        const piVersion = getPiVersion(statusData.pi_model);
+        const matchesModel = modelFilter === 'all' || piVersion === modelFilter;
+        return matchesSearch && matchesStatus && matchesLocation && matchesModel;
       }).sort((a, b) => {
         const statusOrder = { healthy: 0, partial: 1, offline: 2, unknown: 3 };
         const aStatus = deviceStatuses[a.device_id] || 'unknown';
@@ -1667,7 +1872,10 @@ function getDashboardHTML() {
             '<div class="status-badge" id="status-' + device.device_id + '"><span class="dot"></span><span class="status-text">Unknown</span></div>' +
           '</div>' +
         '</div>' +
-        (showLocation && device.location ? '<div class="location-tag">' + icons.location + device.location + '</div>' : '') +
+        '<div class="location-row">' +
+          (showLocation && device.location ? '<span class="location-tag">' + icons.location + device.location + '</span>' : '') +
+          '<span class="device-time-inline" id="device-time-' + device.device_id + '"></span>' +
+        '</div>' +
         '<div class="services" id="services-' + device.device_id + '"><div class="services-header"><span class="services-title">Services</span><div class="services-progress"><div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div><span class="progress-text">-/-</span></div></div><div class="services-placeholder">Checking...</div></div>' +
         '<div class="buttons">' +
           '<button class="btn-icon" onclick="showDetails(\\'' + device.device_id + '\\')" title="Details">' + icons.eye + '</button>' +
@@ -1707,6 +1915,49 @@ function getDashboardHTML() {
       document.getElementById('modal-subtitle').textContent = device.device_id;
 
       const sshCmd = 'ssh -o ProxyCommand="cloudflared access ssh --hostname %h" pizero@' + device.hostname;
+      const statusData = deviceStatusData[deviceId] || {};
+
+      // Build system info section from live status
+      let systemInfoHtml = '';
+      if (statusData.pi_model || statusData.os || statusData.branch || statusData.commit) {
+        systemInfoHtml = '<div class="modal-section"><div class="modal-section-title">System</div><div class="info-grid">' +
+          (statusData.pi_model ? '<div class="info-item"><span class="info-label">Model</span><span class="info-value">' + statusData.pi_model + '</span></div>' : '') +
+          (statusData.os ? '<div class="info-item"><span class="info-label">OS</span><span class="info-value">' + statusData.os.name + '</span></div>' : '') +
+          (statusData.os ? '<div class="info-item"><span class="info-label">Kernel</span><span class="info-value mono">' + statusData.os.kernel + '</span></div>' : '') +
+          (statusData.branch ? '<div class="info-item"><span class="info-label">Branch</span><span class="info-value mono">' + statusData.branch + '</span></div>' : '') +
+          (statusData.commit ? '<div class="info-item"><span class="info-label">Commit</span><span class="info-value mono">' + statusData.commit + '</span></div>' : '') +
+          (statusData.commit_date ? '<div class="info-item"><span class="info-label">Commit Date</span><span class="info-value">' + statusData.commit_date + '</span></div>' : '') +
+          '</div></div>';
+      }
+
+      // Build live stats section
+      let liveStatsHtml = '';
+      if (statusData.temp || statusData.ram || statusData.disk || statusData.wifi) {
+        liveStatsHtml = '<div class="modal-section"><div class="modal-section-title">Live Stats</div><div class="info-grid">' +
+          (statusData.temp ? '<div class="info-item"><span class="info-label">CPU Temp</span><span class="info-value">' + statusData.temp + '°C</span></div>' : '') +
+          (statusData.ram ? '<div class="info-item"><span class="info-label">RAM</span><span class="info-value">' + statusData.ram.percent + '% (' + statusData.ram.used_mb + '/' + statusData.ram.total_mb + ' MB)</span></div>' : '') +
+          (statusData.disk ? '<div class="info-item"><span class="info-label">Disk</span><span class="info-value">' + statusData.disk.percent + '% (' + statusData.disk.used_gb + '/' + statusData.disk.total_gb + ' GB)</span></div>' : '') +
+          (statusData.wifi ? '<div class="info-item"><span class="info-label">WiFi</span><span class="info-value">' + statusData.wifi + '</span></div>' : '') +
+          (statusData.ip ? '<div class="info-item"><span class="info-label">Local IP</span><span class="info-value mono">' + statusData.ip + '</span></div>' : '') +
+          (statusData.uptime ? '<div class="info-item"><span class="info-label">Uptime</span><span class="info-value">' + statusData.uptime + '</span></div>' : '') +
+          (statusData.local_time ? '<div class="info-item"><span class="info-label">Device Time</span><span class="info-value">' + statusData.local_time + '</span></div>' : '') +
+          '</div></div>';
+      }
+
+      // Build services section for modal
+      let servicesHtml = '';
+      const services = statusData.services || {};
+      if (Object.keys(services).length > 0) {
+        const running = Object.values(services).filter(v => v).length;
+        const total = Object.keys(services).length;
+        servicesHtml = '<div class="modal-section"><div class="modal-section-title">Services (' + running + '/' + total + ')</div><div class="modal-services-grid">' +
+          Object.entries(services).map(([name, isRunning]) =>
+            '<div class="modal-service-item ' + (isRunning ? 'running' : 'stopped') + '">' +
+            '<span class="service-dot ' + (isRunning ? 'running' : 'stopped') + '"></span>' +
+            '<span>' + name.replace('.sh', '').replace('.py', '') + '</span></div>'
+          ).join('') +
+          '</div></div>';
+      }
 
       document.getElementById('modal-body').innerHTML =
         '<div class="modal-section"><div class="modal-section-title">Device Info</div><div class="info-grid">' +
@@ -1714,6 +1965,9 @@ function getDashboardHTML() {
         '<div class="info-item"><span class="info-label">Hostname</span><span class="info-value mono">' + device.hostname + '</span></div>' +
         '<div class="info-item"><span class="info-label">Tunnel ID</span><span class="info-value mono">' + (device.tunnel_id || '-') + '</span></div>' +
         '</div></div>' +
+        systemInfoHtml +
+        liveStatsHtml +
+        servicesHtml +
         '<div class="modal-section"><div class="modal-section-title">Timestamps</div><div class="info-grid">' +
         '<div class="info-item"><span class="info-label">Last Seen</span><span class="info-value">' + (device.last_seen ? new Date(device.last_seen).toLocaleString() : 'Never') + '</span></div>' +
         '<div class="info-item"><span class="info-label">Created</span><span class="info-value">' + (device.created_at ? new Date(device.created_at).toLocaleString() : '-') + '</span></div>' +
@@ -1767,7 +2021,7 @@ function getDashboardHTML() {
       const img = container.querySelector('.screenshot-img');
       img.onload = () => { loading.style.display = 'none'; img.style.display = 'block'; };
       img.onerror = () => { loading.textContent = 'Failed to load'; loading.style.color = 'var(--accent-red)'; };
-      img.src = 'https://' + hostname + '/screenshot?t=' + Date.now();
+      img.src = 'https://' + hostname + '/screenshot';
     }
 
     function refreshScreenshot(hostname) {
