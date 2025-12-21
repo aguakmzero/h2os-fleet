@@ -482,11 +482,88 @@ function getDashboardHTML() {
       transition: all 0.2s ease;
     }
     .card.pinned { border-color: var(--accent-amber); }
+    .card.incomplete-status { border-left: 3px solid var(--accent-amber); }
+    .card.incomplete-status .card-footer::after {
+      content: '⚠ incomplete status';
+      font-size: 10px;
+      color: var(--accent-amber);
+      opacity: 0.8;
+      margin-left: auto;
+    }
     .card:hover {
       background: var(--bg-card-hover);
       border-color: var(--border-light);
       transform: translateY(-2px);
       box-shadow: 0 12px 24px -8px rgba(0, 0, 0, 0.4);
+    }
+
+    /* Card Screenshot */
+    .card-screenshot {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 6px;
+      margin-bottom: 0.75rem;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card-screenshot img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 6px;
+    }
+    .card-screenshot .screenshot-loader {
+      position: absolute;
+      color: var(--text-muted);
+      font-size: 0.7rem;
+    }
+    .card-screenshot .screenshot-loader svg {
+      width: 20px;
+      height: 20px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .card-screenshot .refresh-overlay {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 28px;
+      height: 28px;
+      background: rgba(0, 0, 0, 0.6);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .card-screenshot:hover .refresh-overlay {
+      opacity: 1;
+    }
+    .card-screenshot .refresh-overlay:hover {
+      background: rgba(0, 0, 0, 0.8);
+    }
+    .card-screenshot .refresh-overlay svg {
+      width: 14px;
+      height: 14px;
+      color: var(--text-secondary);
+    }
+    .card-screenshot .refresh-overlay.loading svg {
+      animation: spin 1s linear infinite;
+    }
+    .card-screenshot.failed {
+      background: rgba(239, 68, 68, 0.1);
+    }
+    .card-screenshot.failed .screenshot-loader {
+      color: var(--accent-red);
     }
 
     /* Card Header */
@@ -1331,6 +1408,7 @@ function getDashboardHTML() {
     let allLocations = [];
     let isRefreshing = false;
     let deviceServicesHTML = {}; // Cache services HTML for re-render
+    let screenshotCache = {}; // Cache screenshot URLs for re-render
     let autoRefreshTimer = null;
     let savePrefsTimeout = null;
 
@@ -1406,11 +1484,13 @@ function getDashboardHTML() {
         const res = await fetch(API_BASE + '/api/devices');
         const data = await res.json();
         devices = data.devices;
+        screenshotCache = {}; // Clear screenshot cache on full refresh
         document.getElementById('skeleton-loader').style.display = 'none';
         document.getElementById('devices-container').style.display = 'block';
         populateLocationDropdown();
         renderDevices();
-        checkAllStatus();
+        await checkAllStatus(); // Wait for status checks before loading screenshots
+        loadAllCardScreenshots(); // Now we know which devices are offline
         updateLastUpdate();
       } catch (err) {
         showToast('Error loading devices', true);
@@ -1472,6 +1552,16 @@ function getDashboardHTML() {
         const statusText = data.status === 'healthy' ? 'Online' : data.status === 'partial' ? 'Partial' : 'Offline';
         badge.className = 'status-badge ' + statusClass;
         badge.innerHTML = '<span class="dot"></span><span class="status-text">' + statusText + '</span>';
+
+        // Mark card if status is incomplete (missing branch/commit)
+        const card = document.querySelector('.card[data-device-id="' + device.device_id + '"]');
+        if (card) {
+          if (!data.branch || !data.commit) {
+            card.classList.add('incomplete-status');
+          } else {
+            card.classList.remove('incomplete-status');
+          }
+        }
 
         const services = data.services || {...(data.systemd || {}), ...(data.processes || {})};
         if (servicesDiv) {
@@ -1564,7 +1654,9 @@ function getDashboardHTML() {
       const device = devices.find(d => d.device_id === deviceId);
       if (!device) return;
       btn.classList.add('loading');
+      delete screenshotCache[deviceId]; // Clear cache to force screenshot refresh
       await checkDeviceStatus(device);
+      loadCardScreenshot(deviceId); // Reload screenshot
       btn.classList.remove('loading');
       updateSummaryStats();
     }
@@ -1850,6 +1942,39 @@ function getDashboardHTML() {
         if (servicesDiv && deviceServicesHTML[deviceId]) {
           servicesDiv.innerHTML = deviceServicesHTML[deviceId];
         }
+
+        // Restore incomplete-status indicator
+        const card = document.querySelector('.card[data-device-id="' + deviceId + '"]');
+        const statusData = deviceStatusData[deviceId];
+        if (card && statusData) {
+          if (!statusData.branch || !statusData.commit) {
+            card.classList.add('incomplete-status');
+          }
+        }
+      }
+
+      // Restore cached screenshots and mark offline devices
+      for (const deviceId of Object.keys(deviceStatuses)) {
+        const container = document.getElementById('screenshot-' + deviceId);
+        if (!container) continue;
+        const loader = container.querySelector('.screenshot-loader');
+        const img = container.querySelector('img');
+        const status = deviceStatuses[deviceId];
+
+        // If device is offline, show offline state
+        if (status === 'offline' || status === 'unknown') {
+          if (loader) {
+            loader.innerHTML = 'Offline';
+            loader.style.opacity = '0.5';
+          }
+          container.classList.add('failed');
+        }
+        // Otherwise restore cached screenshot if available
+        else if (screenshotCache[deviceId] && loader && img) {
+          img.src = screenshotCache[deviceId];
+          loader.style.display = 'none';
+          img.style.display = 'block';
+        }
       }
     }
 
@@ -1860,6 +1985,11 @@ function getDashboardHTML() {
       const hiddenClass = isHidden ? ' hidden' : '';
 
       return '<div class="card' + (isPinned ? ' pinned' : '') + hiddenClass + '" data-device-id="' + device.device_id + '" data-location="' + (device.location || 'No Location') + '">' +
+        '<div class="card-screenshot" id="screenshot-' + device.device_id + '" data-hostname="' + device.hostname + '">' +
+          '<div class="screenshot-loader">' + icons.refresh + '</div>' +
+          '<img style="display:none" />' +
+          '<div class="refresh-overlay" onclick="refreshCardScreenshot(\\'' + device.device_id + '\\', event)" title="Refresh screenshot">' + icons.refresh + '</div>' +
+        '</div>' +
         '<div class="card-header">' +
           '<div class="card-title-group">' +
             '<div class="card-title-row">' +
@@ -2021,7 +2151,7 @@ function getDashboardHTML() {
       const img = container.querySelector('.screenshot-img');
       img.onload = () => { loading.style.display = 'none'; img.style.display = 'block'; };
       img.onerror = () => { loading.textContent = 'Failed to load'; loading.style.color = 'var(--accent-red)'; };
-      img.src = 'https://' + hostname + '/screenshot';
+      img.src = 'https://' + hostname + '/screenshot?t=' + Date.now();
     }
 
     function refreshScreenshot(hostname) {
@@ -2034,6 +2164,81 @@ function getDashboardHTML() {
         img.style.display = 'none';
         loadScreenshot(hostname);
       }
+    }
+
+    // Card screenshot functions
+    function loadCardScreenshot(deviceId) {
+      const container = document.getElementById('screenshot-' + deviceId);
+      if (!container) return;
+
+      // Skip if device is offline - don't waste time trying to load screenshot
+      const status = deviceStatuses[deviceId];
+      if (status === 'offline' || status === 'unknown') {
+        const loader = container.querySelector('.screenshot-loader');
+        if (loader) {
+          loader.innerHTML = 'Offline';
+          loader.style.opacity = '0.5';
+        }
+        container.classList.add('failed');
+        return;
+      }
+
+      // Skip if already cached - will be restored by restoreCachedStatuses
+      if (screenshotCache[deviceId]) return;
+
+      const hostname = container.dataset.hostname;
+      const loader = container.querySelector('.screenshot-loader');
+      const img = container.querySelector('img');
+      const url = 'https://' + hostname + '/screenshot?t=' + Date.now();
+
+      img.onload = () => {
+        loader.style.display = 'none';
+        img.style.display = 'block';
+        container.classList.remove('failed');
+        screenshotCache[deviceId] = url; // Cache on success
+      };
+      img.onerror = () => {
+        loader.innerHTML = 'Failed';
+        container.classList.add('failed');
+      };
+      img.src = url;
+    }
+
+    function refreshCardScreenshot(deviceId, event) {
+      event.stopPropagation();
+      const container = document.getElementById('screenshot-' + deviceId);
+      if (!container) return;
+      const overlay = container.querySelector('.refresh-overlay');
+      const loader = container.querySelector('.screenshot-loader');
+      const img = container.querySelector('img');
+
+      overlay.classList.add('loading');
+      loader.innerHTML = icons.refresh;
+      loader.style.display = 'block';
+      img.style.display = 'none';
+      container.classList.remove('failed');
+
+      const hostname = container.dataset.hostname;
+      const url = 'https://' + hostname + '/screenshot?t=' + Date.now();
+      img.onload = () => {
+        loader.style.display = 'none';
+        img.style.display = 'block';
+        overlay.classList.remove('loading');
+        screenshotCache[deviceId] = url; // Update cache
+      };
+      img.onerror = () => {
+        loader.innerHTML = 'Failed';
+        container.classList.add('failed');
+        overlay.classList.remove('loading');
+        delete screenshotCache[deviceId]; // Clear cache on failure
+      };
+      img.src = url;
+    }
+
+    function loadAllCardScreenshots() {
+      devices.forEach(d => {
+        setTimeout(() => loadCardScreenshot(d.device_id), Math.random() * 2000);
+      });
     }
 
     // Mobile sheet
