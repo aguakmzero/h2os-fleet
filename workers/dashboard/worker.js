@@ -1210,6 +1210,9 @@ function getDashboardHTML() {
   <div class="toast" id="toast"></div>
 
   <script>
+    // API base URL - empty for production (same origin), full URL for local dev
+    const API_BASE = location.hostname === 'localhost' ? 'https://fleet.aguakmze.ro' : '';
+
     // State
     let devices = [];
     let deviceStatuses = {};
@@ -1249,7 +1252,7 @@ function getDashboardHTML() {
     // Load preferences
     async function loadPreferences() {
       try {
-        const res = await fetch('/api/preferences');
+        const res = await fetch(API_BASE + '/api/preferences');
         const data = await res.json();
         if (data.pinnedDevices) userPrefs.pinnedDevices = data.pinnedDevices;
         if (data.sortBy) userPrefs.sortBy = data.sortBy;
@@ -1276,7 +1279,7 @@ function getDashboardHTML() {
       clearTimeout(savePrefsTimeout);
       savePrefsTimeout = setTimeout(async () => {
         try {
-          await fetch('/api/preferences', {
+          await fetch(API_BASE + '/api/preferences', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(userPrefs)
@@ -1290,7 +1293,7 @@ function getDashboardHTML() {
     // Load devices
     async function loadDevices() {
       try {
-        const res = await fetch('/api/devices');
+        const res = await fetch(API_BASE + '/api/devices');
         const data = await res.json();
         devices = data.devices;
         document.getElementById('skeleton-loader').style.display = 'none';
