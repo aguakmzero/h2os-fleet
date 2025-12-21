@@ -97,7 +97,10 @@ Reassign device to new tunnel (for recovery).
 #### GET /api/preferences
 Get current user's preferences.
 
-**Headers:** `CF-Access-Authenticated-User-Email` (from CF Access)
+**User Identification (in order):**
+1. `CF-Access-Authenticated-User-Email` header (when endpoint is CF Access protected)
+2. `CF_Authorization` cookie JWT decode (when user authenticated via dashboard)
+3. Falls back to `anonymous`
 
 **Response:**
 ```json
@@ -115,17 +118,40 @@ Save user preferences.
 
 **Request:** Same format as GET response
 
-### Utility
+**Note:** Dashboard sends `credentials: 'include'` to pass cookies for user identification.
 
-#### GET /validate
+### Utility (Legacy Routes - Bypass CF Access)
+
+#### POST /validate
 Validate setup password.
 
-**Query:** `?password=Agua@rmada1`
+**Request:**
+```json
+{"password": "Agua@rmada1"}
+```
 
-**Response:** `OK` or `INVALID`
+**Response:**
+```json
+{"valid": true}
+```
 
-#### GET /cloudflared/download
+#### POST /check
+Check if device already exists.
+
+**Request:**
+```json
+{"password": "...", "name": "genie-52"}
+```
+
+**Response:**
+```json
+{"exists": true}
+```
+
+#### GET /download/cloudflared
 Proxy cloudflared binary download (for devices behind firewalls).
+
+**Query:** `?arch=arm64` (arm64, armhf, or amd64)
 
 ## Database Operations
 

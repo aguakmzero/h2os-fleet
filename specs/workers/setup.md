@@ -27,7 +27,7 @@ The returned bash script:
 
 1. **Prompts for setup password** (`Agua@rmada1`)
 2. **Prompts for device ID** (e.g., `genie-52`)
-3. **Registers device** via API call to `/api/register`
+3. **Registers device** via API call to `/register` (legacy route, bypasses CF Access)
 4. **Installs cloudflared** and configures tunnel
 5. **Installs VNC** (x11vnc + noVNC)
 6. **Installs status server** (`/opt/h2os-status.py`)
@@ -38,6 +38,17 @@ The returned bash script:
 
 - Calls `api-worker` for device registration
 - Uses Cloudflare API for tunnel creation
+
+## API Routes Used
+
+The setup script uses legacy routes (without `/api/` prefix) because they bypass CF Access:
+
+| Action | Route | Why Legacy |
+|--------|-------|------------|
+| Validate password | `POST /validate` | Bypasses CF Access |
+| Check device exists | `POST /check` | Bypasses CF Access |
+| Register device | `POST /register` | Bypasses CF Access |
+| Download cloudflared | `GET /download/cloudflared` | Bypasses CF Access |
 
 ## Script Constants
 
