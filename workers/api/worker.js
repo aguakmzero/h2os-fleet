@@ -28,7 +28,7 @@ export default {
     const origin = request.headers.get('Origin') || '*';
     const corsHeaders = {
       'Access-Control-Allow-Origin': origin,
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
       'Access-Control-Allow-Credentials': 'true',
     };
@@ -57,6 +57,9 @@ export default {
       if (path === '/api/fleet-status') {
         return handleFleetStatus(request, env, corsHeaders);
       }
+      if (path === '/api/fleet-summary-image') {
+        return handleFleetSummaryImage(request, env, corsHeaders);
+      }
       if (path === '/api/preferences') {
         if (request.method === 'GET') {
           return handleGetPreferences(request, env, corsHeaders);
@@ -67,6 +70,14 @@ export default {
       }
       if (path === '/api/cloudflared' || path === '/download/cloudflared') {
         return handleCloudflaredDownload(url, corsHeaders);
+      }
+      if (path === '/api/reboot') {
+        return handleReboot(request, env, corsHeaders);
+      }
+      // Update device name/location
+      if (path.startsWith('/api/devices/') && request.method === 'PATCH') {
+        const deviceId = path.replace('/api/devices/', '');
+        return handleUpdateDevice(request, env, corsHeaders, deviceId);
       }
 
       return new Response('Not found', { status: 404 });
@@ -322,6 +333,70 @@ async function handleApiDevices(request, env, corsHeaders) {
   });
 }
 
+const ADMIN_EMAILS = ['sahil@aguakmzero.com'];
+
+async function handleUpdateDevice(request, env, corsHeaders, deviceId) {
+  // Check admin access
+  const userEmail = getUserEmail(request);
+  if (!ADMIN_EMAILS.includes(userEmail)) {
+    return new Response(JSON.stringify({ error: 'Admin access required' }), {
+      status: 403,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  const { friendly_name, location } = await request.json();
+
+  // Check device exists
+  const device = await env.DB.prepare(
+    'SELECT * FROM devices WHERE device_id = ?'
+  ).bind(deviceId).first();
+
+  if (!device) {
+    return new Response(JSON.stringify({ error: 'Device not found' }), {
+      status: 404,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Update only provided fields
+  const updates = [];
+  const params = [];
+
+  if (friendly_name !== undefined) {
+    updates.push('friendly_name = ?');
+    params.push(friendly_name || null);
+  }
+  if (location !== undefined) {
+    updates.push('location = ?');
+    params.push(location || null);
+  }
+
+  if (updates.length === 0) {
+    return new Response(JSON.stringify({ error: 'No fields to update' }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  params.push(deviceId);
+  await env.DB.prepare(
+    `UPDATE devices SET ${updates.join(', ')} WHERE device_id = ?`
+  ).bind(...params).run();
+
+  // Fetch updated device
+  const updated = await env.DB.prepare(
+    'SELECT * FROM devices WHERE device_id = ?'
+  ).bind(deviceId).first();
+
+  return new Response(JSON.stringify({
+    success: true,
+    device: updated,
+  }), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
 async function handleFleetStatus(request, env, corsHeaders) {
   const url = new URL(request.url);
   const filterStatus = url.searchParams.get('status');
@@ -333,37 +408,60 @@ async function handleFleetStatus(request, env, corsHeaders) {
   `).all();
 
   const statusPromises = devices.results.map(async (device) => {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const startTime = Date.now();
+    let lastError = null;
 
-      const res = await fetch(`https://${device.hostname}/status`, {
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
+    // Try up to 2 times with different timeouts
+    const attempts = [
+      { timeout: 10000, attempt: 1 }, // First try: 10 seconds
+      { timeout: 20000, attempt: 2 }  // Retry: 20 seconds
+    ];
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const status = await res.json();
+    for (const { timeout, attempt } of attempts) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-      return {
-        device_id: device.device_id,
-        friendly_name: device.friendly_name,
-        hostname: device.hostname,
-        location: device.location,
-        ...status,
-        online: true,
-      };
-    } catch (err) {
-      return {
-        device_id: device.device_id,
-        friendly_name: device.friendly_name,
-        hostname: device.hostname,
-        location: device.location,
-        status: 'offline',
-        error: err.message,
-        online: false,
-      };
+        const res = await fetch(`https://${device.hostname}/status`, {
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const status = await res.json();
+        const responseTime = Date.now() - startTime;
+
+        return {
+          device_id: device.device_id,
+          friendly_name: device.friendly_name,
+          hostname: device.hostname,
+          location: device.location,
+          ...status,
+          online: true,
+          response_time_ms: responseTime,
+          attempts: attempt
+        };
+      } catch (err) {
+        lastError = err;
+        // If it's not a timeout and not the last attempt, don't retry
+        if (!err.message.includes('aborted') && attempt < attempts.length) {
+          break;
+        }
+      }
     }
+
+    // All attempts failed
+    const responseTime = Date.now() - startTime;
+    return {
+      device_id: device.device_id,
+      friendly_name: device.friendly_name,
+      hostname: device.hostname,
+      location: device.location,
+      status: responseTime >= 30000 ? 'timeout' : 'offline',
+      error: lastError.message,
+      online: false,
+      response_time_ms: responseTime
+    };
   });
 
   let results = await Promise.all(statusPromises);
@@ -383,6 +481,12 @@ async function handleFleetStatus(request, env, corsHeaders) {
     healthy: results.filter(d => d.status === 'healthy').length,
     partial: results.filter(d => d.status === 'partial').length,
     offline: results.filter(d => d.status === 'offline').length,
+    timeout: results.filter(d => d.status === 'timeout').length,
+    avg_response_time_ms: Math.round(
+      results
+        .filter(d => d.response_time_ms)
+        .reduce((acc, d) => acc + d.response_time_ms, 0) / results.length
+    ),
   };
 
   return new Response(JSON.stringify({
@@ -435,6 +539,53 @@ async function handleCloudflaredDownload(url, corsHeaders) {
   }
 }
 
+async function handleReboot(request, env, corsHeaders) {
+  if (request.method !== 'POST') {
+    return new Response('Method not allowed', { status: 405, headers: corsHeaders });
+  }
+
+  const { hostname } = await request.json();
+  if (!hostname) {
+    return new Response(JSON.stringify({ error: 'hostname required' }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  try {
+    const response = await fetch(`https://${hostname}/reboot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    // Device may close connection during reboot, so handle empty response
+    const text = await response.text();
+    let data;
+    try {
+      data = text ? JSON.parse(text) : { status: 'rebooting', message: 'Reboot initiated' };
+    } catch {
+      data = { status: 'rebooting', message: 'Reboot initiated' };
+    }
+
+    return new Response(JSON.stringify(data), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  } catch (err) {
+    // Connection error likely means device is already rebooting
+    if (err.message.includes('fetch') || err.message.includes('network')) {
+      return new Response(JSON.stringify({ status: 'rebooting', message: 'Device is rebooting' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 502,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+}
+
 function getUserEmail(request) {
   // First try the CF Access header (set when endpoint is protected)
   const headerEmail = request.headers.get('CF-Access-Authenticated-User-Email');
@@ -460,17 +611,21 @@ function getUserEmail(request) {
 }
 
 async function ensurePreferencesTable(env) {
-  await env.DB.exec(`
-    CREATE TABLE IF NOT EXISTS user_preferences (
-      user_email TEXT PRIMARY KEY,
-      pinned_devices TEXT DEFAULT '[]',
-      sort_by TEXT DEFAULT 'status',
-      sort_order TEXT DEFAULT 'asc',
-      auto_refresh_interval INTEGER DEFAULT 0,
-      collapsed_locations TEXT DEFAULT '[]',
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+  try {
+    await env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS user_preferences (
+        user_email TEXT PRIMARY KEY,
+        pinned_devices TEXT DEFAULT '[]',
+        sort_by TEXT DEFAULT 'status',
+        sort_order TEXT DEFAULT 'asc',
+        auto_refresh_interval INTEGER DEFAULT 0,
+        collapsed_locations TEXT DEFAULT '[]',
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+  } catch (e) {
+    // Table likely already exists
+  }
 }
 
 async function handleGetPreferences(request, env, corsHeaders) {
@@ -483,9 +638,12 @@ async function handleGetPreferences(request, env, corsHeaders) {
       'SELECT * FROM user_preferences WHERE user_email = ?'
     ).bind(userEmail).first();
 
+    const isAdmin = ADMIN_EMAILS.includes(userEmail);
+
     if (prefs) {
       return new Response(JSON.stringify({
         userEmail,
+        isAdmin,
         pinnedDevices: JSON.parse(prefs.pinned_devices || '[]'),
         sortBy: prefs.sort_by || 'status',
         sortOrder: prefs.sort_order || 'asc',
@@ -498,6 +656,7 @@ async function handleGetPreferences(request, env, corsHeaders) {
 
     return new Response(JSON.stringify({
       userEmail,
+      isAdmin,
       pinnedDevices: [],
       sortBy: 'status',
       sortOrder: 'asc',
@@ -543,6 +702,145 @@ async function handleSavePreferences(request, env, corsHeaders) {
     ).run();
 
     return new Response(JSON.stringify({ success: true, userEmail }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+}
+
+async function handleFleetSummaryImage(request, env, corsHeaders) {
+  try {
+    // First get fleet status
+    const statusResponse = await handleFleetStatus(request, env, {});
+    const statusData = await statusResponse.json();
+    const { summary, devices } = statusData;
+
+    // Group devices by location for better visualization
+    const locationGroups = {};
+    devices.forEach(device => {
+      const loc = device.location || 'Unknown';
+      if (!locationGroups[loc]) {
+        locationGroups[loc] = {
+          healthy: 0,
+          partial: 0,
+          offline: 0,
+          timeout: 0
+        };
+      }
+      locationGroups[loc][device.status]++;
+    });
+
+    // Sort locations by total devices
+    const sortedLocations = Object.entries(locationGroups)
+      .sort((a, b) => {
+        const totalA = a[1].healthy + a[1].partial + a[1].offline + a[1].timeout;
+        const totalB = b[1].healthy + b[1].partial + b[1].offline + b[1].timeout;
+        return totalB - totalA;
+      });
+
+    // Create SVG visualization
+    const width = 800;
+    const height = 600 + (sortedLocations.length * 30);
+
+    const svg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+      <style>
+        .title { font: bold 28px Arial; fill: #333; }
+        .subtitle { font: 20px Arial; fill: #666; }
+        .stat { font: bold 24px Arial; }
+        .label { font: 16px Arial; fill: #555; }
+        .location { font: 14px Arial; fill: #333; }
+        .number { font: bold 14px Arial; }
+        .healthy { fill: #22c55e; }
+        .partial { fill: #f59e0b; }
+        .offline { fill: #ef4444; }
+        .timeout { fill: #8b5cf6; }
+        .bg { fill: #f3f4f6; }
+      </style>
+
+      <rect width="${width}" height="${height}" class="bg"/>
+
+      <!-- Title -->
+      <text x="${width/2}" y="40" text-anchor="middle" class="title">H2OS Fleet Status</text>
+      <text x="${width/2}" y="70" text-anchor="middle" class="subtitle">${new Date().toLocaleString('en-US', { timeZone: 'Europe/Madrid' })}</text>
+
+      <!-- Summary Stats -->
+      <g transform="translate(50, 120)">
+        <rect x="0" y="0" width="140" height="80" rx="10" fill="#22c55e" opacity="0.2"/>
+        <text x="70" y="35" text-anchor="middle" class="stat healthy">${summary.healthy}</text>
+        <text x="70" y="60" text-anchor="middle" class="label">Healthy</text>
+      </g>
+
+      <g transform="translate(210, 120)">
+        <rect x="0" y="0" width="140" height="80" rx="10" fill="#f59e0b" opacity="0.2"/>
+        <text x="70" y="35" text-anchor="middle" class="stat partial">${summary.partial}</text>
+        <text x="70" y="60" text-anchor="middle" class="label">Partial</text>
+      </g>
+
+      <g transform="translate(370, 120)">
+        <rect x="0" y="0" width="140" height="80" rx="10" fill="#ef4444" opacity="0.2"/>
+        <text x="70" y="35" text-anchor="middle" class="stat offline">${summary.offline}</text>
+        <text x="70" y="60" text-anchor="middle" class="label">Offline</text>
+      </g>
+
+      <g transform="translate(530, 120)">
+        <rect x="0" y="0" width="140" height="80" rx="10" fill="#8b5cf6" opacity="0.2"/>
+        <text x="70" y="35" text-anchor="middle" class="stat timeout">${summary.timeout}</text>
+        <text x="70" y="60" text-anchor="middle" class="label">Timeout</text>
+      </g>
+
+      <!-- Response Time -->
+      <text x="50" y="240" class="label">Average Response Time: ${summary.avg_response_time_ms}ms</text>
+
+      <!-- Location Breakdown -->
+      <text x="50" y="280" class="subtitle">By Location:</text>
+      ${sortedLocations.map((loc, i) => {
+        const [name, stats] = loc;
+        const total = stats.healthy + stats.partial + stats.offline + stats.timeout;
+        const y = 310 + (i * 30);
+        const barWidth = 400;
+        const healthyWidth = (stats.healthy / total) * barWidth;
+        const partialWidth = (stats.partial / total) * barWidth;
+        const offlineWidth = (stats.offline / total) * barWidth;
+        const timeoutWidth = (stats.timeout / total) * barWidth;
+
+        return `
+          <g transform="translate(50, ${y})">
+            <text x="0" y="15" class="location">${name.substring(0, 30)}${name.length > 30 ? '...' : ''}</text>
+            <rect x="250" y="0" width="${healthyWidth}" height="20" class="healthy"/>
+            <rect x="${250 + healthyWidth}" y="0" width="${partialWidth}" height="20" class="partial"/>
+            <rect x="${250 + healthyWidth + partialWidth}" y="0" width="${offlineWidth}" height="20" class="offline"/>
+            <rect x="${250 + healthyWidth + partialWidth + offlineWidth}" y="0" width="${timeoutWidth}" height="20" class="timeout"/>
+            <text x="660" y="15" class="number">${total}</text>
+          </g>
+        `;
+      }).join('')}
+
+      <!-- Legend -->
+      <g transform="translate(50, ${height - 80})">
+        <rect x="0" y="0" width="20" height="20" class="healthy"/>
+        <text x="25" y="15" class="label">Healthy</text>
+        <rect x="100" y="0" width="20" height="20" class="partial"/>
+        <text x="125" y="15" class="label">Partial</text>
+        <rect x="200" y="0" width="20" height="20" class="offline"/>
+        <text x="225" y="15" class="label">Offline</text>
+        <rect x="300" y="0" width="20" height="20" class="timeout"/>
+        <text x="325" y="15" class="label">Timeout</text>
+      </g>
+    </svg>`;
+
+    // Convert SVG to base64
+    const base64 = btoa(unescape(encodeURIComponent(svg)));
+    const dataUri = `data:image/svg+xml;base64,${base64}`;
+
+    return new Response(JSON.stringify({
+      image: dataUri,
+      summary: summary,
+      timestamp: new Date().toISOString()
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (err) {
