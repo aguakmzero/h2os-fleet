@@ -15,6 +15,8 @@
  * - /validate, /check, /register, /devices
  */
 
+// Removed durable objects import - using batching instead
+
 const ACCOUNT_ID = 'b62c683522b0480cb5cf56b57dc6ba77';
 const ZONE_ID = 'dc57ebbf78af9984015c7762b4fee21d';
 const DOMAIN = 'aguakmze.ro';
@@ -403,24 +405,31 @@ async function handleFleetStatus(request, env, corsHeaders) {
   const filterLocation = url.searchParams.get('location');
   const filterDevice = url.searchParams.get('device');
 
+  // Get all devices from the database
   const devices = await env.DB.prepare(`
     SELECT * FROM devices ORDER BY device_id ASC
   `).all();
 
-  const statusPromises = devices.results.map(async (device) => {
-    const startTime = Date.now();
-    let lastError = null;
+  // Process devices in batches to avoid hitting the 50 subrequest limit
+  const BATCH_SIZE = 40; // Leave some headroom under the 50 limit
+  const batches = [];
 
-    // Try up to 2 times with different timeouts
-    const attempts = [
-      { timeout: 10000, attempt: 1 }, // First try: 10 seconds
-      { timeout: 20000, attempt: 2 }  // Retry: 20 seconds
-    ];
+  for (let i = 0; i < devices.results.length; i += BATCH_SIZE) {
+    batches.push(devices.results.slice(i, i + BATCH_SIZE));
+  }
 
-    for (const { timeout, attempt } of attempts) {
+  // Process each batch
+  const allResults = [];
+
+  for (const batch of batches) {
+    const batchPromises = batch.map(async (device) => {
+      const startTime = Date.now();
+      let lastError = null;
+
+      // Single attempt with 20 second timeout to fit more devices in
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeout);
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
 
         const res = await fetch(`https://${device.hostname}/status`, {
           signal: controller.signal,
@@ -439,33 +448,32 @@ async function handleFleetStatus(request, env, corsHeaders) {
           ...status,
           online: true,
           response_time_ms: responseTime,
-          attempts: attempt
+          attempts: 1
         };
       } catch (err) {
         lastError = err;
-        // If it's not a timeout and not the last attempt, don't retry
-        if (!err.message.includes('aborted') && attempt < attempts.length) {
-          break;
-        }
+        const responseTime = Date.now() - startTime;
+
+        return {
+          device_id: device.device_id,
+          friendly_name: device.friendly_name,
+          hostname: device.hostname,
+          location: device.location,
+          status: err.name === 'AbortError' ? 'timeout' : 'offline',
+          error: lastError?.message || 'Connection failed',
+          online: false,
+          response_time_ms: responseTime,
+          total_attempts: 1
+        };
       }
-    }
+    });
 
-    // All attempts failed
-    const responseTime = Date.now() - startTime;
-    return {
-      device_id: device.device_id,
-      friendly_name: device.friendly_name,
-      hostname: device.hostname,
-      location: device.location,
-      status: responseTime >= 30000 ? 'timeout' : 'offline',
-      error: lastError.message,
-      online: false,
-      response_time_ms: responseTime
-    };
-  });
+    const batchResults = await Promise.all(batchPromises);
+    allResults.push(...batchResults);
+  }
 
-  let results = await Promise.all(statusPromises);
-
+  // Apply filters
+  let results = allResults;
   if (filterStatus) {
     results = results.filter(d => d.status === filterStatus);
   }
@@ -476,6 +484,7 @@ async function handleFleetStatus(request, env, corsHeaders) {
     results = results.filter(d => d.device_id.includes(filterDevice));
   }
 
+  // Calculate summary
   const summary = {
     total: results.length,
     healthy: results.filter(d => d.status === 'healthy').length,
@@ -485,7 +494,7 @@ async function handleFleetStatus(request, env, corsHeaders) {
     avg_response_time_ms: Math.round(
       results
         .filter(d => d.response_time_ms)
-        .reduce((acc, d) => acc + d.response_time_ms, 0) / results.length
+        .reduce((acc, d) => acc + d.response_time_ms, 0) / results.length || 0
     ),
   };
 
@@ -493,6 +502,8 @@ async function handleFleetStatus(request, env, corsHeaders) {
     summary,
     devices: results,
     timestamp: new Date().toISOString(),
+    batches: batches.length,
+    batch_size: BATCH_SIZE
   }), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
@@ -714,8 +725,8 @@ async function handleSavePreferences(request, env, corsHeaders) {
 
 async function handleFleetSummaryImage(request, env, corsHeaders) {
   try {
-    // First get fleet status
-    const statusResponse = await handleFleetStatus(request, env, {});
+    // First get fleet status using the same Durable Objects approach
+    const statusResponse = await handleFleetStatus(request, env, corsHeaders);
     const statusData = await statusResponse.json();
     const { summary, devices } = statusData;
 
