@@ -6,15 +6,61 @@
  * It communicates with the API worker for data.
  */
 
-const VERSION = 'f161641-status'; // Update with: git log -1 --format="%h"
+const VERSION = '2024-12-24-i'; // Increment on each deploy
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // Handle root redirect
+    // Landing page (for unauthenticated users)
     if (url.pathname === '/') {
-      return Response.redirect('https://fleet.aguakmze.ro/dashboard', 302);
+      return new Response(getLandingHTML(), {
+        headers: { 'Content-Type': 'text/html' },
+      });
+    }
+
+    // Logged out page
+    if (url.pathname === '/logged-out') {
+      return new Response(getLoggedOutHTML(), {
+        headers: { 'Content-Type': 'text/html' },
+      });
+    }
+
+    // Version endpoint for PWA update check
+    if (url.pathname === '/version') {
+      return new Response(JSON.stringify({ version: VERSION }), {
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate'
+        },
+      });
+    }
+
+    // PWA Manifest
+    if (url.pathname === '/manifest.json') {
+      return new Response(getManifest(), {
+        headers: { 'Content-Type': 'application/manifest+json' },
+      });
+    }
+
+    // Service Worker
+    if (url.pathname === '/sw.js') {
+      return new Response(getServiceWorker(), {
+        headers: { 'Content-Type': 'application/javascript' },
+      });
+    }
+
+    // PWA Icon (PNG)
+    if (url.pathname === '/icon-192.png' || url.pathname === '/icon-512.png') {
+      // Return a simple colored square with water drop emoji as SVG
+      const size = url.pathname.includes('512') ? 512 : 192;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}">
+        <rect fill="#0ea5e9" width="${size}" height="${size}" rx="${size * 0.22}"/>
+        <text x="${size/2}" y="${size * 0.7}" text-anchor="middle" font-size="${size * 0.55}" fill="white">💧</text>
+      </svg>`;
+      return new Response(svg, {
+        headers: { 'Content-Type': 'image/svg+xml' },
+      });
     }
 
     // Only handle /dashboard
@@ -28,13 +74,338 @@ export default {
   },
 };
 
-function getDashboardHTML() {
+function getLandingHTML() {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>H2OS Fleet</title>
+  <meta name="theme-color" content="#0a0f1a">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0a0f1a 0%, #1a1f2e 50%, #0d1420 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #f1f5f9;
+      padding: 2rem;
+    }
+    .container {
+      text-align: center;
+      max-width: 400px;
+    }
+    .logo {
+      width: 80px;
+      height: 80px;
+      background: linear-gradient(135deg, #22d3ee 0%, #0ea5e9 100%);
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.5rem;
+      margin: 0 auto 1.5rem;
+      box-shadow: 0 8px 32px rgba(14, 165, 233, 0.3);
+    }
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, #f1f5f9 0%, #22d3ee 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .subtitle {
+      color: #64748b;
+      font-size: 1rem;
+      margin-bottom: 2.5rem;
+    }
+    .login-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+      color: white;
+      padding: 1rem 2rem;
+      border-radius: 12px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 1rem;
+      transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 4px 16px rgba(14, 165, 233, 0.3);
+    }
+    .login-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(14, 165, 233, 0.4);
+    }
+    .login-btn svg {
+      width: 20px;
+      height: 20px;
+    }
+    .features {
+      display: flex;
+      gap: 2rem;
+      margin-top: 3rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .feature {
+      text-align: center;
+    }
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 0.5rem;
+      font-size: 1.25rem;
+    }
+    .feature-label {
+      font-size: 0.8rem;
+      color: #64748b;
+    }
+    .footer {
+      position: absolute;
+      bottom: 2rem;
+      color: #475569;
+      font-size: 0.75rem;
+    }
+    .footer a {
+      color: #64748b;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">💧</div>
+    <h1>H2OS Fleet</h1>
+    <p class="subtitle">Groundwater Monitoring Dashboard</p>
+    <a href="/dashboard" class="login-btn">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+      Sign in with Google
+    </a>
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">📡</div>
+        <div class="feature-label">Live Monitoring</div>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🖥️</div>
+        <div class="feature-label">Remote Access</div>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">📊</div>
+        <div class="feature-label">Status Tracking</div>
+      </div>
+    </div>
+  </div>
+  <div class="footer">
+    <a href="https://aguakmzero.com">Agua KMZero</a> · H2OS Fleet v${VERSION}
+  </div>
+</body>
+</html>`;
+}
+
+function getLoggedOutHTML() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Logged Out · H2OS Fleet</title>
+  <meta name="theme-color" content="#0a0f1a">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0a0f1a 0%, #1a1f2e 50%, #0d1420 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #f1f5f9;
+      padding: 2rem;
+    }
+    .container {
+      text-align: center;
+      max-width: 400px;
+    }
+    .icon {
+      width: 80px;
+      height: 80px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.5rem;
+    }
+    .icon svg {
+      width: 40px;
+      height: 40px;
+      color: #10b981;
+    }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    .subtitle {
+      color: #64748b;
+      font-size: 1rem;
+      margin-bottom: 2rem;
+    }
+    .login-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+      padding: 0.875rem 1.5rem;
+      border-radius: 10px;
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 0.95rem;
+      transition: background 0.2s;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .login-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+    .login-btn svg {
+      width: 18px;
+      height: 18px;
+    }
+    .footer {
+      position: absolute;
+      bottom: 2rem;
+      color: #475569;
+      font-size: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    </div>
+    <h1>You've been signed out</h1>
+    <p class="subtitle">Thanks for using H2OS Fleet</p>
+    <a href="/dashboard" class="login-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+        <polyline points="10 17 15 12 10 7"/>
+        <line x1="15" y1="12" x2="3" y2="12"/>
+      </svg>
+      Sign in again
+    </a>
+  </div>
+  <div class="footer">
+    H2OS Fleet · Agua KMZero
+  </div>
+</body>
+</html>`;
+}
+
+function getManifest() {
+  return JSON.stringify({
+    name: 'H2OS Fleet',
+    short_name: 'Fleet',
+    description: 'H2OS Fleet Management Dashboard',
+    start_url: '/dashboard',
+    display: 'standalone',
+    background_color: '#0a0f1a',
+    theme_color: '#0a0f1a',
+    orientation: 'portrait-primary',
+    icons: [
+      {
+        src: '/icon-192.png',
+        sizes: '192x192',
+        type: 'image/svg+xml',
+        purpose: 'any maskable'
+      },
+      {
+        src: '/icon-512.png',
+        sizes: '512x512',
+        type: 'image/svg+xml',
+        purpose: 'any maskable'
+      }
+    ]
+  });
+}
+
+function getServiceWorker() {
+  return `
+// H2OS Fleet Service Worker - Minimal for PWA installability
+const CACHE_NAME = 'fleet-v1';
+
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(clients.claim());
+});
+
+self.addEventListener('fetch', (event) => {
+  // Network-first strategy - always try network, fall back to cache
+  event.respondWith(
+    fetch(event.request)
+      .then(response => {
+        // Clone and cache successful responses
+        if (response.ok && event.request.method === 'GET') {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then(cache => {
+            cache.put(event.request, responseClone);
+          });
+        }
+        return response;
+      })
+      .catch(() => {
+        // Network failed, try cache
+        return caches.match(event.request);
+      })
+  );
+});
+`;
+}
+
+function getDashboardHTML() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>H2OS Fleet</title>
+
+  <!-- PWA Meta Tags -->
+  <meta name="theme-color" content="#0a0f1a">
+  <meta name="background-color" content="#0a0f1a">
+  <meta name="description" content="H2OS Fleet Management Dashboard">
+
+  <!-- iOS PWA Meta Tags -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Fleet">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect fill='%230ea5e9' width='180' height='180' rx='40'/><text x='90' y='125' text-anchor='middle' font-size='100' fill='white'>💧</text></svg>">
+
+  <!-- Web App Manifest -->
+  <link rel="manifest" href="/manifest.json">
+
+  <!-- Prevent text selection and callouts on iOS -->
+  <meta name="format-detection" content="telephone=no">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -132,6 +503,78 @@ function getDashboardHTML() {
       display: flex;
       gap: 0.5rem;
       align-items: center;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .user-menu {
+      position: relative;
+    }
+    .user-pill {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      padding: 0.375rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .user-pill:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+    .user-pill svg {
+      width: 12px;
+      height: 12px;
+    }
+    .user-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      min-width: 200px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+      z-index: 100;
+      overflow: hidden;
+    }
+    .user-dropdown.active {
+      display: block;
+    }
+    .user-dropdown-email {
+      padding: 0.75rem 1rem;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      word-break: break-all;
+    }
+    .user-dropdown-divider {
+      height: 1px;
+      background: var(--border);
+    }
+    .user-dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1rem;
+      font-size: 0.85rem;
+      color: var(--text-primary);
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .user-dropdown-item:hover {
+      background: var(--bg-card-hover);
+    }
+    .user-dropdown-item svg {
+      width: 16px;
+      height: 16px;
+      opacity: 0.7;
     }
     .stat-badge {
       display: flex;
@@ -645,8 +1088,17 @@ function getDashboardHTML() {
     .status-badge.offline .dot { background: var(--accent-red); }
     .status-badge.checking { background: rgba(14, 165, 233, 0.15); color: var(--accent-blue); }
     .status-badge.checking .dot { background: var(--accent-blue); animation: pulse-blue 1s ease-in-out infinite; }
+    .status-badge.rebooting { background: rgba(245, 158, 11, 0.15); color: var(--accent-amber); }
+    .status-badge.rebooting .dot { background: var(--accent-amber); animation: pulse-amber 1s ease-in-out infinite; }
+
+    .rebooting-card { opacity: 0.6; pointer-events: none; }
+    .rebooting-card .btn-reboot { pointer-events: auto; }
 
     @keyframes pulse-blue {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.2); }
+    }
+    @keyframes pulse-amber {
       0%, 100% { opacity: 1; transform: scale(1); }
       50% { opacity: 0.5; transform: scale(1.2); }
     }
@@ -895,6 +1347,24 @@ function getDashboardHTML() {
     .btn-vnc:hover { filter: brightness(1.1); }
     .btn-vnc svg { width: 14px; height: 14px; }
 
+    /* Reboot button (icon-only, amber/warning) */
+    .btn-reboot {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--accent-amber);
+    }
+    .btn-reboot:hover {
+      background: rgba(245, 158, 11, 0.25);
+      color: var(--accent-amber);
+    }
+    .btn-reboot.rebooting {
+      animation: pulse 1s infinite;
+      pointer-events: none;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
     /* Card Footer */
     .card-footer {
       margin-top: 0.75rem;
@@ -1109,11 +1579,58 @@ function getDashboardHTML() {
       z-index: 60;
       padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
     }
+    /* Mobile Search Bar */
+    .mobile-search {
+      display: none;
+      padding: 0 0 0.75rem 0;
+    }
+    .mobile-search input {
+      width: 100%;
+      background: var(--border);
+      border: 1px solid var(--border-light);
+      border-radius: 10px;
+      padding: 0.625rem 1rem 0.625rem 2.5rem;
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      outline: none;
+    }
+    .mobile-search input:focus {
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.1);
+    }
+    .mobile-search input::placeholder { color: var(--text-muted); }
+    .mobile-search-wrapper {
+      position: relative;
+    }
+    .mobile-search-wrapper svg {
+      position: absolute;
+      left: 0.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 16px;
+      height: 16px;
+      color: var(--text-muted);
+    }
+
     @media (max-width: 768px) {
-      .mobile-nav { display: flex; justify-content: space-around; align-items: center; }
+      .mobile-nav { display: flex; justify-content: space-around; align-items: center; position: fixed !important; bottom: 0 !important; left: 0 !important; right: 0 !important; }
       .controls-row { display: none; }
-      .summary-stats { display: none; }
-      .header-top .summary-stats { display: none; }
+      .mobile-search { display: block; }
+      /* Hide user pill and dropdown on mobile */
+      .user-menu { display: none; }
+      /* Show summary stats on mobile, but compact */
+      .summary-stats {
+        display: flex;
+        gap: 0.35rem;
+      }
+      .stat-badge {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.7rem;
+      }
+      .stat-dot {
+        width: 6px;
+        height: 6px;
+      }
     }
     .mobile-nav-btn {
       background: none;
@@ -1184,7 +1701,7 @@ function getDashboardHTML() {
       color: var(--text-muted);
       margin-bottom: 0.75rem;
     }
-    .sheet-options { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .sheet-options { display: flex; flex-direction: column; gap: 0.5rem; max-height: 70vh; overflow-y: auto; }
     .sheet-option {
       padding: 0.5rem 1rem;
       border-radius: 20px;
@@ -1199,6 +1716,19 @@ function getDashboardHTML() {
       background: rgba(14, 165, 233, 0.15);
       border-color: var(--accent-blue);
       color: var(--accent-cyan);
+    }
+    .sheet-account-email {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      padding: 0.5rem 0 1rem;
+      word-break: break-all;
+    }
+    .sheet-logout {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      justify-content: center;
+      margin-top: 0.5rem;
     }
 
     /* Toast Notification */
@@ -1224,9 +1754,64 @@ function getDashboardHTML() {
     @media (min-width: 769px) {
       .toast { bottom: 2rem; }
     }
+
+    /* Pull to refresh */
+    .pull-indicator {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 0;
+      background: linear-gradient(180deg, var(--accent-cyan) 0%, transparent 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      color: white;
+      font-weight: 600;
+      overflow: hidden;
+      opacity: 0;
+      z-index: 100;
+      transition: opacity 0.2s;
+    }
+
+    /* Update banner */
+    .update-banner {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-cyan) 100%);
+      color: white;
+      padding: 0.75rem 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      z-index: 300;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    .update-banner button {
+      background: rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: white;
+      padding: 0.4rem 0.8rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .update-banner button:first-of-type {
+      background: white;
+      color: var(--accent-blue);
+      border: none;
+    }
   </style>
 </head>
 <body>
+  <div id="pull-indicator" class="pull-indicator">Pull to refresh</div>
   <header class="header">
     <div class="header-content">
       <div class="header-top">
@@ -1237,10 +1822,31 @@ function getDashboardHTML() {
             <p>Groundwater Monitoring <span class="version-tag">v${VERSION}</span></p>
           </div>
         </div>
-        <div class="summary-stats" id="summary-stats">
-          <div class="stat-badge healthy"><span class="stat-dot healthy"></span><span id="stat-healthy">0</span></div>
-          <div class="stat-badge partial"><span class="stat-dot partial"></span><span id="stat-partial">0</span></div>
-          <div class="stat-badge offline"><span class="stat-dot offline"></span><span id="stat-offline">0</span></div>
+        <div class="header-right">
+          <div class="user-menu" id="user-menu">
+            <div class="user-pill" id="user-pill" onclick="toggleUserMenu()" style="display: none;"></div>
+            <div class="user-dropdown" id="user-dropdown">
+              <div class="user-dropdown-email" id="user-dropdown-email"></div>
+              <div class="user-dropdown-divider"></div>
+              <a class="user-dropdown-item" href="#" onclick="handleLogout(event)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                Sign out
+              </a>
+            </div>
+          </div>
+          <div class="summary-stats" id="summary-stats">
+            <div class="stat-badge healthy"><span class="stat-dot healthy"></span><span id="stat-healthy">0</span></div>
+            <div class="stat-badge partial"><span class="stat-dot partial"></span><span id="stat-partial">0</span></div>
+            <div class="stat-badge offline"><span class="stat-dot offline"></span><span id="stat-offline">0</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="mobile-search">
+        <div class="mobile-search-wrapper">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+          </svg>
+          <input type="text" id="mobile-search-input" placeholder="Search devices..." oninput="handleSearch(this.value)">
         </div>
       </div>
       <div class="controls-row">
@@ -1353,25 +1959,25 @@ function getDashboardHTML() {
 
   <!-- Mobile Bottom Nav -->
   <nav class="mobile-nav">
-    <button class="mobile-nav-btn" onclick="openMobileSheet('filter')">
+    <button class="mobile-nav-btn" onclick="openMobileSheet('filter')" id="mobile-filter-btn">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-      <span>Filter</span>
+      <span id="mobile-filter-label">Filter</span>
     </button>
-    <button class="mobile-nav-btn" onclick="openMobileSheet('location')">
+    <button class="mobile-nav-btn" onclick="openMobileSheet('location')" id="mobile-location-btn">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-      <span>Location</span>
+      <span id="mobile-location-label">Location</span>
     </button>
-    <button class="mobile-nav-btn" onclick="openMobileSheet('sort')">
+    <button class="mobile-nav-btn" onclick="openMobileSheet('sort')" id="mobile-sort-btn">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5h10M11 9h7M11 13h4M3 17l3 3 3-3M6 18V4"/></svg>
-      <span>Sort</span>
+      <span id="mobile-sort-label">Sort</span>
     </button>
     <button class="mobile-nav-btn" onclick="refreshDevices()" id="mobile-refresh-btn">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
       <span>Refresh</span>
     </button>
-    <button class="mobile-nav-btn" onclick="openMobileSheet('settings')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
-      <span>Settings</span>
+    <button class="mobile-nav-btn" onclick="openMobileSheet('account')" id="mobile-account-btn" style="display: none;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      <span id="mobile-account-name">Account</span>
     </button>
   </nav>
 
@@ -1384,6 +1990,34 @@ function getDashboardHTML() {
 
   <!-- Toast -->
   <div class="toast" id="toast"></div>
+
+  <!-- Edit Device Modal -->
+  <div class="modal" id="edit-modal">
+    <div class="modal-content" style="max-width: 400px;">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h2 id="edit-modal-title">Edit Device</h2>
+          <p id="edit-modal-subtitle"></p>
+        </div>
+        <button class="modal-close" onclick="closeEditModal()">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div id="edit-modal-body" style="padding: 1.5rem;">
+        <div style="margin-bottom: 1rem;">
+          <label style="display: block; color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.5rem;">Name</label>
+          <input type="text" id="edit-friendly-name" style="width: 100%; padding: 0.75rem; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-size: 1rem;" placeholder="Friendly name">
+        </div>
+        <div style="margin-bottom: 1.5rem;">
+          <label style="display: block; color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.5rem;">Location</label>
+          <input type="text" id="edit-location" style="width: 100%; padding: 0.75rem; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-size: 1rem;" placeholder="Location">
+        </div>
+        <button onclick="saveDeviceEdit()" id="edit-save-btn" style="width: 100%; padding: 0.75rem; background: var(--accent-blue); border: none; border-radius: 8px; color: white; font-size: 1rem; cursor: pointer; font-weight: 500;">Save Changes</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     // API base URL - empty for production (same origin), full URL for local dev
@@ -1411,6 +2045,9 @@ function getDashboardHTML() {
     let screenshotCache = {}; // Cache screenshot URLs for re-render
     let autoRefreshTimer = null;
     let savePrefsTimeout = null;
+    let currentUserEmail = '';
+    let isCurrentUserAdmin = false;
+    let activeAbortControllers = [];
 
     // Icons
     const icons = {
@@ -1433,7 +2070,9 @@ function getDashboardHTML() {
       disk: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>',
       cpu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></svg>',
       commit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><line x1="3" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="21" y2="12"/></svg>',
-      clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
+      clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+      reboot: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/></svg>',
+      edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>'
     };
 
     // Load preferences
@@ -1455,6 +2094,31 @@ function getDashboardHTML() {
         document.getElementById('auto-refresh-select').value = userPrefs.autoRefreshInterval;
         if (userPrefs.autoRefreshInterval > 0) {
           startAutoRefresh(userPrefs.autoRefreshInterval);
+        }
+
+        // Set user info
+        currentUserEmail = data.userEmail || '';
+        isCurrentUserAdmin = data.isAdmin || false;
+
+        // Show user pill and set dropdown email
+        if (data.userEmail && data.userEmail !== 'anonymous') {
+          const pill = document.getElementById('user-pill');
+          const displayName = data.userEmail.split('@')[0];
+          pill.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>' + displayName;
+          pill.style.display = 'flex';
+          document.getElementById('user-dropdown-email').textContent = data.userEmail;
+          // Show mobile account button
+          const mobileBtn = document.getElementById('mobile-account-btn');
+          mobileBtn.style.display = 'flex';
+          document.getElementById('mobile-account-name').textContent = displayName;
+        }
+
+        // Update mobile nav labels
+        updateMobileNavLabels();
+
+        // Re-render devices if already loaded (to show/hide edit button based on admin status)
+        if (devices.length > 0) {
+          renderDevices();
         }
       } catch (err) {
         console.error('Failed to load preferences:', err);
@@ -1517,6 +2181,7 @@ function getDashboardHTML() {
     function setLocationFilter(loc) {
       locationFilter = loc;
       document.getElementById('location-select').value = loc;
+      updateMobileNavLabels();
       renderDevices();
     }
 
@@ -1540,9 +2205,11 @@ function getDashboardHTML() {
 
       try {
         const controller = new AbortController();
+        activeAbortControllers.push(controller);
         const timeoutId = setTimeout(() => controller.abort(), 8000);
         const res = await fetch('https://' + device.hostname + '/status', { signal: controller.signal });
         clearTimeout(timeoutId);
+        activeAbortControllers = activeAbortControllers.filter(c => c !== controller);
         const data = await res.json();
 
         deviceStatuses[device.device_id] = data.status;
@@ -1766,6 +2433,7 @@ function getDashboardHTML() {
       document.querySelectorAll('#filter-pills .filter-pill').forEach(p => p.classList.remove('active'));
       document.querySelector('.filter-pill[data-status="' + status + '"]').classList.add('active');
       document.getElementById('filter-dropdown').value = status;
+      updateMobileNavLabels();
       renderDevices();
     }
 
@@ -1794,6 +2462,7 @@ function getDashboardHTML() {
       if (activePill) activePill.classList.add('active');
       // Update dropdown
       document.getElementById('sort-dropdown').value = sortBy;
+      updateMobileNavLabels();
       savePreferences();
       renderDevices();
     }
@@ -1835,6 +2504,64 @@ function getDashboardHTML() {
           btn.title = 'Copy SSH';
         }, 2000);
       });
+    }
+
+    async function rebootDevice(hostname, deviceName, btn) {
+      if (!confirm('Reboot ' + deviceName + '?\\n\\nThe device will go offline for ~60 seconds while it restarts.')) {
+        return;
+      }
+
+      btn.classList.add('rebooting');
+      btn.title = 'Rebooting...';
+      showToast('Rebooting ' + deviceName + '...');
+
+      try {
+        const response = await fetch('https://fleet.aguakmze.ro/api/reboot', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hostname: hostname })
+        });
+
+        if (response.ok) {
+          showToast(deviceName + ' is rebooting. Will check again in 60s.');
+          // Find device and update UI to show rebooting state
+          const device = devices.find(d => d.hostname === hostname);
+          const deviceId = device ? device.device_id : null;
+
+          if (deviceId) {
+            // Update card to show rebooting state
+            const card = document.getElementById('card-' + deviceId);
+            const badge = document.getElementById('badge-' + deviceId);
+            if (card) card.classList.add('rebooting-card');
+            if (badge) {
+              badge.className = 'status-badge rebooting';
+              badge.innerHTML = '<span class="dot"></span><span class="status-text">Rebooting</span>';
+            }
+          }
+
+          // After 60s, refresh the device status and screenshot
+          setTimeout(async () => {
+            btn.classList.remove('rebooting');
+            btn.innerHTML = icons.reboot;
+            btn.title = 'Reboot';
+            if (deviceId) {
+              const card = document.getElementById('card-' + deviceId);
+              if (card) card.classList.remove('rebooting-card');
+              showToast('Checking ' + deviceName + '...');
+              delete screenshotCache[deviceId];
+              await checkDeviceStatus(device);
+              loadCardScreenshot(deviceId);
+            }
+          }, 60000);
+        } else {
+          throw new Error('Reboot request failed');
+        }
+      } catch (err) {
+        btn.classList.remove('rebooting');
+        btn.innerHTML = icons.reboot;
+        btn.title = 'Reboot';
+        showToast('Failed to reboot ' + deviceName, true);
+      }
     }
 
     // Filter & sort devices
@@ -2013,6 +2740,8 @@ function getDashboardHTML() {
           '<button class="btn-icon" onclick="refreshSingleDevice(\\'' + device.device_id + '\\', this)" title="Refresh">' + icons.refresh + '</button>' +
           '<button class="btn-icon" onclick="copySSH(\\'' + device.hostname + '\\', this)" title="Copy SSH">' + icons.terminal + '</button>' +
           '<a class="btn btn-vnc" href="https://' + device.hostname + '/vnc.html" target="_blank" title="Open VNC">' + icons.monitor + '</a>' +
+          (isCurrentUserAdmin ? '<button class="btn-icon" onclick="showEditDevice(\\'' + device.device_id + '\\')" title="Edit">' + icons.edit + '</button>' : '') +
+          '<button class="btn-icon btn-reboot" onclick="rebootDevice(\\'' + device.hostname + '\\', \\'' + displayName.replace(/'/g, "\\\\'") + '\\', this)" title="Reboot">' + icons.reboot + '</button>' +
         '</div>' +
         '<div class="card-footer">' +
           '<span class="last-seen">Last: ' + (device.last_seen ? formatTime(device.last_seen) : 'Never') + '</span>' +
@@ -2280,6 +3009,12 @@ function getDashboardHTML() {
           '<button class="sheet-option' + (userPrefs.autoRefreshInterval === 60 ? ' active' : '') + '" onclick="setAutoRefresh(60);closeMobileSheet()">1m</button>' +
           '<button class="sheet-option' + (userPrefs.autoRefreshInterval === 300 ? ' active' : '') + '" onclick="setAutoRefresh(300);closeMobileSheet()">5m</button>' +
           '</div></div>';
+      } else if (type === 'account') {
+        html = '<div class="sheet-title">Account</div>' +
+          '<div class="sheet-section">' +
+          '<div class="sheet-account-email">' + currentUserEmail + '</div>' +
+          '<button class="sheet-option sheet-logout" onclick="handleLogout(event)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;margin-right:8px;"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Sign out</button>' +
+          '</div>';
       }
 
       content.innerHTML = html;
@@ -2292,6 +3027,38 @@ function getDashboardHTML() {
       document.getElementById('sheet-backdrop').classList.remove('active');
     }
 
+    // Update mobile nav labels to show active filter/sort values
+    function updateMobileNavLabels() {
+      // Filter label
+      const filterLabel = document.getElementById('mobile-filter-label');
+      const filterBtn = document.getElementById('mobile-filter-btn');
+      if (statusFilter === 'all') {
+        filterLabel.textContent = 'Filter';
+        filterBtn.classList.remove('active');
+      } else {
+        const labels = { healthy: 'Online', partial: 'Partial', offline: 'Offline' };
+        filterLabel.textContent = labels[statusFilter] || statusFilter;
+        filterBtn.classList.add('active');
+      }
+
+      // Location label
+      const locLabel = document.getElementById('mobile-location-label');
+      const locBtn = document.getElementById('mobile-location-btn');
+      if (locationFilter === 'all') {
+        locLabel.textContent = 'Location';
+        locBtn.classList.remove('active');
+      } else {
+        // Truncate long location names
+        locLabel.textContent = locationFilter.length > 10 ? locationFilter.slice(0, 10) + '…' : locationFilter;
+        locBtn.classList.add('active');
+      }
+
+      // Sort label
+      const sortLabel = document.getElementById('mobile-sort-label');
+      const sortLabels = { status: 'Status', name: 'Name', location: 'Location', lastSeen: 'Recent' };
+      sortLabel.textContent = sortLabels[userPrefs.sortBy] || 'Sort';
+    }
+
     // Toast
     function showToast(message, isError = false) {
       const toast = document.getElementById('toast');
@@ -2300,9 +3067,189 @@ function getDashboardHTML() {
       setTimeout(() => { toast.classList.remove('active'); }, 3000);
     }
 
+    // Edit device
+    let editingDeviceId = null;
+
+    function showEditDevice(deviceId) {
+      const device = devices.find(d => d.device_id === deviceId);
+      if (!device) return;
+
+      editingDeviceId = deviceId;
+      document.getElementById('edit-modal-title').textContent = 'Edit Device';
+      document.getElementById('edit-modal-subtitle').textContent = deviceId;
+      document.getElementById('edit-friendly-name').value = device.friendly_name || '';
+      document.getElementById('edit-location').value = device.location || '';
+      document.getElementById('edit-modal').classList.add('active');
+    }
+
+    function closeEditModal() {
+      document.getElementById('edit-modal').classList.remove('active');
+      editingDeviceId = null;
+    }
+
+    // User menu dropdown
+    function toggleUserMenu() {
+      const dropdown = document.getElementById('user-dropdown');
+      dropdown.classList.toggle('active');
+    }
+
+    function closeUserMenu() {
+      document.getElementById('user-dropdown').classList.remove('active');
+    }
+
+    function handleLogout(e) {
+      e.preventDefault();
+      // Stop auto-refresh
+      if (autoRefreshTimer) {
+        clearInterval(autoRefreshTimer);
+        autoRefreshTimer = null;
+      }
+      // Abort all pending requests
+      activeAbortControllers.forEach(c => c.abort());
+      activeAbortControllers = [];
+      // Small delay to let things settle, then redirect
+      setTimeout(() => {
+        window.location.href = 'https://aguakmzero.cloudflareaccess.com/cdn-cgi/access/logout';
+      }, 100);
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+      const menu = document.getElementById('user-menu');
+      if (menu && !menu.contains(e.target)) {
+        closeUserMenu();
+      }
+    });
+
+    async function saveDeviceEdit() {
+      if (!editingDeviceId) return;
+
+      const btn = document.getElementById('edit-save-btn');
+      const originalText = btn.textContent;
+      btn.textContent = 'Saving...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch(API_BASE + '/api/devices/' + editingDeviceId, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            friendly_name: document.getElementById('edit-friendly-name').value.trim(),
+            location: document.getElementById('edit-location').value.trim()
+          })
+        });
+
+        const data = await res.json();
+        if (data.success) {
+          // Update local device data
+          const idx = devices.findIndex(d => d.device_id === editingDeviceId);
+          if (idx !== -1 && data.device) {
+            devices[idx] = { ...devices[idx], ...data.device };
+          }
+          closeEditModal();
+          renderDevices();
+          showToast('Device updated');
+        } else {
+          showToast(data.error || 'Failed to update', true);
+        }
+      } catch (err) {
+        showToast('Error: ' + err.message, true);
+      } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }
+    }
+
+    // Close edit modal on backdrop click
+    document.getElementById('edit-modal').addEventListener('click', function(e) {
+      if (e.target === this) closeEditModal();
+    });
+
     // Init
     loadPreferences();
     loadDevices();
+
+    // Register Service Worker for PWA
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+
+    // Pull-to-refresh
+    let pullStartY = 0;
+    let pulling = false;
+    const pullThreshold = 80;
+
+    document.addEventListener('touchstart', (e) => {
+      if (window.scrollY === 0) {
+        pullStartY = e.touches[0].clientY;
+        pulling = true;
+      }
+    }, { passive: true });
+
+    document.addEventListener('touchmove', (e) => {
+      if (!pulling) return;
+      const pullDistance = e.touches[0].clientY - pullStartY;
+      if (pullDistance > 0 && pullDistance < pullThreshold * 1.5) {
+        const indicator = document.getElementById('pull-indicator');
+        if (indicator) {
+          indicator.style.height = Math.min(pullDistance, pullThreshold) + 'px';
+          indicator.style.opacity = Math.min(pullDistance / pullThreshold, 1);
+          if (pullDistance >= pullThreshold) {
+            indicator.textContent = 'Release to refresh';
+          } else {
+            indicator.textContent = 'Pull to refresh';
+          }
+        }
+      }
+    }, { passive: true });
+
+    document.addEventListener('touchend', (e) => {
+      if (!pulling) return;
+      const indicator = document.getElementById('pull-indicator');
+      if (indicator) {
+        const height = parseInt(indicator.style.height) || 0;
+        if (height >= pullThreshold) {
+          indicator.textContent = 'Refreshing...';
+          refreshDevices().then(() => {
+            indicator.style.height = '0';
+            indicator.style.opacity = '0';
+          });
+        } else {
+          indicator.style.height = '0';
+          indicator.style.opacity = '0';
+        }
+      }
+      pulling = false;
+      pullStartY = 0;
+    }, { passive: true });
+
+    // Version check for PWA updates
+    const APP_VERSION = '${VERSION}';
+    async function checkForUpdates() {
+      try {
+        const res = await fetch('/version?t=' + Date.now());
+        const data = await res.json();
+        if (data.version && data.version !== APP_VERSION) {
+          showUpdatePrompt(data.version);
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    function showUpdatePrompt(newVersion) {
+      const banner = document.createElement('div');
+      banner.className = 'update-banner';
+      banner.innerHTML = '<span>New version available</span><button onclick="location.reload(true)">Update</button><button onclick="this.parentElement.remove()">Later</button>';
+      document.body.appendChild(banner);
+    }
+
+    // Check for updates every 5 minutes and on visibility change
+    setInterval(checkForUpdates, 5 * 60 * 1000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checkForUpdates();
+    });
+    // Initial check after 10 seconds
+    setTimeout(checkForUpdates, 10000);
   </script>
 </body>
 </html>`;

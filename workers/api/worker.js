@@ -454,13 +454,29 @@ async function handleFleetStatus(request, env, corsHeaders) {
         lastError = err;
         const responseTime = Date.now() - startTime;
 
+        // Better error categorization
+        let status = 'offline';
+        let error = lastError?.message || 'Connection failed';
+
+        if (err.name === 'AbortError') {
+          status = 'timeout';
+          error = 'Request timeout (20s)';
+        } else if (err.message?.includes('Too many subrequests')) {
+          status = 'monitoring_error';
+          error = 'Monitoring system limit reached';
+        } else if (err.message?.includes('530')) {
+          // Cloudflare tunnel errors
+          status = 'offline';
+          error = 'Device unreachable (HTTP 530)';
+        }
+
         return {
           device_id: device.device_id,
           friendly_name: device.friendly_name,
           hostname: device.hostname,
           location: device.location,
-          status: err.name === 'AbortError' ? 'timeout' : 'offline',
-          error: lastError?.message || 'Connection failed',
+          status: status,
+          error: error,
           online: false,
           response_time_ms: responseTime,
           total_attempts: 1
@@ -491,6 +507,7 @@ async function handleFleetStatus(request, env, corsHeaders) {
     partial: results.filter(d => d.status === 'partial').length,
     offline: results.filter(d => d.status === 'offline').length,
     timeout: results.filter(d => d.status === 'timeout').length,
+    monitoring_error: results.filter(d => d.status === 'monitoring_error').length,
     avg_response_time_ms: Math.round(
       results
         .filter(d => d.response_time_ms)
