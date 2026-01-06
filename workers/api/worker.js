@@ -81,6 +81,27 @@ export default {
         const deviceId = path.replace('/api/devices/', '');
         return handleUpdateDevice(request, env, corsHeaders, deviceId);
       }
+      // Batch update devices
+      if (path === '/api/devices/batch' && request.method === 'POST') {
+        return handleBatchUpdateDevices(request, env, corsHeaders);
+      }
+      // Proxy endpoints for individual device status and screenshots
+      if (path.startsWith('/api/device-status/')) {
+        const deviceId = path.replace('/api/device-status/', '');
+        return handleDeviceStatus(request, env, corsHeaders, deviceId);
+      }
+      if (path.startsWith('/api/device-screenshot/')) {
+        const deviceId = path.replace('/api/device-screenshot/', '');
+        return handleDeviceScreenshot(request, env, corsHeaders, deviceId);
+      }
+      // Deploy key management
+      if (path.startsWith('/api/deploy-keys/') && request.method === 'GET') {
+        const deviceId = path.replace('/api/deploy-keys/', '');
+        return handleCheckDeployKey(request, env, corsHeaders, deviceId);
+      }
+      if (path === '/api/deploy-keys' && request.method === 'POST') {
+        return handleCreateDeployKey(request, env, corsHeaders);
+      }
 
       return new Response('Not found', { status: 404 });
     } catch (err) {
@@ -124,7 +145,7 @@ async function handleCheck(request, env, corsHeaders) {
 }
 
 async function handleRegister(request, env, corsHeaders) {
-  const { password, name, friendlyName, location, reassign } = await request.json();
+  const { password, name, friendlyName, location, vncAccount, reassign } = await request.json();
 
   if (password !== env.SETUP_PASSWORD) {
     return new Response(JSON.stringify({ error: 'Invalid password' }), {
@@ -270,15 +291,16 @@ async function handleRegister(request, env, corsHeaders) {
 
   // Save to D1
   await env.DB.prepare(`
-    INSERT INTO devices (device_id, friendly_name, hostname, location, tunnel_id, created_at, last_seen)
-    VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    INSERT INTO devices (device_id, friendly_name, hostname, location, vnc_account, tunnel_id, created_at, last_seen)
+    VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
     ON CONFLICT(device_id) DO UPDATE SET
       friendly_name = excluded.friendly_name,
       hostname = excluded.hostname,
       location = excluded.location,
+      vnc_account = COALESCE(excluded.vnc_account, vnc_account),
       tunnel_id = excluded.tunnel_id,
       last_seen = datetime('now')
-  `).bind(name, friendlyName || null, hostname, location || null, tunnelId).run();
+  `).bind(name, friendlyName || null, hostname, location || null, vncAccount || null, tunnelId).run();
 
   return new Response(JSON.stringify({
     success: true,
@@ -347,7 +369,7 @@ async function handleUpdateDevice(request, env, corsHeaders, deviceId) {
     });
   }
 
-  const { friendly_name, location } = await request.json();
+  const { friendly_name, location, vnc_account } = await request.json();
 
   // Check device exists
   const device = await env.DB.prepare(
@@ -373,6 +395,19 @@ async function handleUpdateDevice(request, env, corsHeaders, deviceId) {
     updates.push('location = ?');
     params.push(location || null);
   }
+  if (vnc_account !== undefined) {
+    // Validate vnc_account value
+    const validValues = [null, '', 'VNC1', 'VNC2'];
+    const normalizedValue = vnc_account === '' ? null : vnc_account;
+    if (vnc_account && !validValues.includes(vnc_account)) {
+      return new Response(JSON.stringify({ error: 'Invalid vnc_account value. Must be VNC1, VNC2, or empty.' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    updates.push('vnc_account = ?');
+    params.push(normalizedValue);
+  }
 
   if (updates.length === 0) {
     return new Response(JSON.stringify({ error: 'No fields to update' }), {
@@ -397,6 +432,243 @@ async function handleUpdateDevice(request, env, corsHeaders, deviceId) {
   }), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+async function handleBatchUpdateDevices(request, env, corsHeaders) {
+  // Check admin access
+  const userEmail = getUserEmail(request);
+  if (!ADMIN_EMAILS.includes(userEmail)) {
+    return new Response(JSON.stringify({ error: 'Admin access required' }), {
+      status: 403,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  const { device_ids, location, vnc_account } = await request.json();
+
+  // Validate input
+  if (!device_ids || !Array.isArray(device_ids) || device_ids.length === 0) {
+    return new Response(JSON.stringify({ error: 'device_ids array is required' }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Build update query - only location and vnc_account allowed for batch
+  const updates = [];
+  const baseParams = [];
+
+  if (location !== undefined) {
+    updates.push('location = ?');
+    baseParams.push(location || null);
+  }
+  if (vnc_account !== undefined) {
+    // Validate vnc_account value
+    const validValues = [null, '', 'VNC1', 'VNC2'];
+    const normalizedValue = vnc_account === '' ? null : vnc_account;
+    if (vnc_account && !validValues.includes(vnc_account)) {
+      return new Response(JSON.stringify({ error: 'Invalid vnc_account value. Must be VNC1, VNC2, or empty.' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    updates.push('vnc_account = ?');
+    baseParams.push(normalizedValue);
+  }
+
+  if (updates.length === 0) {
+    return new Response(JSON.stringify({ error: 'No fields to update. Batch edit supports: location, vnc_account' }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Update each device
+  const results = [];
+  for (const deviceId of device_ids) {
+    try {
+      const params = [...baseParams, deviceId];
+      await env.DB.prepare(
+        `UPDATE devices SET ${updates.join(', ')} WHERE device_id = ?`
+      ).bind(...params).run();
+      results.push({ device_id: deviceId, success: true });
+    } catch (err) {
+      results.push({ device_id: deviceId, success: false, error: err.message });
+    }
+  }
+
+  // Fetch updated devices
+  const placeholders = device_ids.map(() => '?').join(',');
+  const updatedDevices = await env.DB.prepare(
+    `SELECT * FROM devices WHERE device_id IN (${placeholders})`
+  ).bind(...device_ids).all();
+
+  return new Response(JSON.stringify({
+    success: results.every(r => r.success),
+    updated_count: results.filter(r => r.success).length,
+    results,
+    devices: updatedDevices.results,
+  }), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+const GITHUB_REPO = 'aguakmzero/h2os-groundwater';
+
+async function handleCheckDeployKey(request, env, corsHeaders, deviceId) {
+  const { password } = Object.fromEntries(new URL(request.url).searchParams);
+
+  if (password !== env.SETUP_PASSWORD) {
+    return new Response(JSON.stringify({ error: 'Invalid password' }), {
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  const keyTitle = `${deviceId} deploy key`;
+
+  try {
+    // List all deploy keys from GitHub
+    const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/keys`, {
+      headers: {
+        'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github+json',
+        'User-Agent': 'H2OS-Fleet-Setup',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      return new Response(JSON.stringify({ error: `GitHub API error: ${response.status}`, details: error }), {
+        status: 502,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const keys = await response.json();
+    const existingKey = keys.find(k => k.title === keyTitle);
+
+    return new Response(JSON.stringify({
+      exists: !!existingKey,
+      key: existingKey ? { id: existingKey.id, title: existingKey.title, created_at: existingKey.created_at } : null,
+      deviceId,
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+}
+
+async function handleCreateDeployKey(request, env, corsHeaders) {
+  const { password, deviceId, publicKey, replace } = await request.json();
+
+  if (password !== env.SETUP_PASSWORD) {
+    return new Response(JSON.stringify({ error: 'Invalid password' }), {
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  if (!deviceId || !publicKey) {
+    return new Response(JSON.stringify({ error: 'deviceId and publicKey are required' }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  const keyTitle = `${deviceId} deploy key`;
+  const ghHeaders = {
+    'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
+    'Accept': 'application/vnd.github+json',
+    'User-Agent': 'H2OS-Fleet-Setup',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+
+  try {
+    // Check if key already exists
+    const listResponse = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/keys`, {
+      headers: ghHeaders,
+    });
+
+    if (!listResponse.ok) {
+      const error = await listResponse.text();
+      return new Response(JSON.stringify({ error: `GitHub API error: ${listResponse.status}`, details: error }), {
+        status: 502,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const keys = await listResponse.json();
+    const existingKey = keys.find(k => k.title === keyTitle);
+
+    // If key exists and replace is not true, return error
+    if (existingKey && !replace) {
+      return new Response(JSON.stringify({
+        error: 'Deploy key already exists',
+        exists: true,
+        key: { id: existingKey.id, title: existingKey.title },
+        hint: 'Set replace=true to delete and recreate the key',
+      }), {
+        status: 409,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Delete existing key if replacing
+    if (existingKey && replace) {
+      const deleteResponse = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/keys/${existingKey.id}`, {
+        method: 'DELETE',
+        headers: ghHeaders,
+      });
+
+      if (!deleteResponse.ok && deleteResponse.status !== 404) {
+        const error = await deleteResponse.text();
+        return new Response(JSON.stringify({ error: `Failed to delete existing key: ${deleteResponse.status}`, details: error }), {
+          status: 502,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    // Create new deploy key
+    const createResponse = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/keys`, {
+      method: 'POST',
+      headers: { ...ghHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: keyTitle,
+        key: publicKey.trim(),
+        read_only: true,
+      }),
+    });
+
+    if (!createResponse.ok) {
+      const error = await createResponse.text();
+      return new Response(JSON.stringify({ error: `Failed to create deploy key: ${createResponse.status}`, details: error }), {
+        status: 502,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const newKey = await createResponse.json();
+
+    return new Response(JSON.stringify({
+      success: true,
+      replaced: !!existingKey,
+      key: { id: newKey.id, title: newKey.title, created_at: newKey.created_at },
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
 }
 
 async function handleFleetStatus(request, env, corsHeaders) {
@@ -875,6 +1147,115 @@ async function handleFleetSummaryImage(request, env, corsHeaders) {
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+}
+
+// Proxy handler for individual device status
+async function handleDeviceStatus(request, env, corsHeaders, deviceId) {
+  try {
+    // Get device info from database
+    const device = await env.DB.prepare(
+      "SELECT hostname FROM devices WHERE device_id = ?"
+    ).bind(deviceId).first();
+
+    if (!device) {
+      return new Response(JSON.stringify({ error: "Device not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Fetch status from device
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+    try {
+      const res = await fetch(`https://${device.hostname}/status`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const status = await res.json();
+
+      return new Response(JSON.stringify({
+        device_id: deviceId,
+        ...status,
+        online: true,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    } catch (err) {
+      clearTimeout(timeoutId);
+      return new Response(JSON.stringify({
+        device_id: deviceId,
+        status: "offline",
+        error: err.message,
+        online: false,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+}
+
+// Proxy handler for device screenshots
+async function handleDeviceScreenshot(request, env, corsHeaders, deviceId) {
+  try {
+    // Get device info from database
+    const device = await env.DB.prepare(
+      "SELECT hostname FROM devices WHERE device_id = ?"
+    ).bind(deviceId).first();
+
+    if (!device) {
+      return new Response("Device not found", {
+        status: 404,
+        headers: corsHeaders,
+      });
+    }
+
+    // Fetch screenshot from device
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
+    try {
+      const res = await fetch(`https://${device.hostname}/screenshot`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      // Forward the screenshot response
+      return new Response(res.body, {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": res.headers.get("Content-Type") || "image/png",
+          "Cache-Control": "public, max-age=300", // Cache for 5 minutes
+        },
+      });
+    } catch (err) {
+      clearTimeout(timeoutId);
+      // Return a 1x1 transparent PNG on error
+      const emptyPng = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="), c => c.charCodeAt(0));
+      return new Response(emptyPng, {
+        status: 200, // Return 200 to avoid console errors
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "image/png",
+        },
+      });
+    }
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 }

@@ -113,12 +113,25 @@ read LOCATION
 LOCATION=\${LOCATION:-}
 
 echo ""
+echo "VNC Account (for remote access billing):"
+echo "  1) VNC1"
+echo "  2) VNC2"
+echo "  3) Skip (set later)"
+echo -n "Choice [1/2/3]: "
+read VNC_CHOICE
+case "$VNC_CHOICE" in
+  1) VNC_ACCOUNT="VNC1" ;;
+  2) VNC_ACCOUNT="VNC2" ;;
+  *) VNC_ACCOUNT="" ;;
+esac
+
+echo ""
 echo "Registering device and creating tunnel..."
 
 # Step 3: Register (creates tunnel, returns token)
 REGISTER_RESULT=$(curl -s -X POST "$SETUP_URL/register" \\
   -H "Content-Type: application/json" \\
-  -d "{\\"password\\":\\"$PASSWORD\\",\\"name\\":\\"$DEVICE_NAME\\",\\"friendlyName\\":\\"$FRIENDLY_NAME\\",\\"location\\":\\"$LOCATION\\",\\"reassign\\":$REASSIGN}")
+  -d "{\\"password\\":\\"$PASSWORD\\",\\"name\\":\\"$DEVICE_NAME\\",\\"friendlyName\\":\\"$FRIENDLY_NAME\\",\\"location\\":\\"$LOCATION\\",\\"vncAccount\\":\\"$VNC_ACCOUNT\\",\\"reassign\\":$REASSIGN}")
 
 SUCCESS=$(echo "$REGISTER_RESULT" | grep -o '"success":true' || true)
 
@@ -220,11 +233,109 @@ systemctl enable cloudflared
 
 echo -e "\${GREEN}✓ Tunnel service running\${NC}"
 
+# Step 6: Setup SSH deploy key for GitHub
+echo ""
+echo "Setting up SSH deploy key for groundwater repo..."
+
+SSH_DIR="/home/pizero/.ssh"
+KEY_NAME="deploy_key_groundwater"
+KEY_PATH="$SSH_DIR/$KEY_NAME"
+GITHUB_ALIAS="github-groundwater"
+SSH_KEY_OK=false
+
+# Ensure SSH directory exists with correct permissions
+mkdir -p $SSH_DIR
+chown pizero:pizero $SSH_DIR
+chmod 700 $SSH_DIR
+
+# Check if deploy key exists on GitHub
+GITHUB_KEY_CHECK=$(curl -s "$SETUP_URL/api/deploy-keys/$DEVICE_NAME?password=$PASSWORD")
+GITHUB_KEY_EXISTS=$(echo "$GITHUB_KEY_CHECK" | grep -o '"exists":true' || true)
+
+# Check if local key exists
+if [ -f "$KEY_PATH" ]; then
+  LOCAL_KEY_EXISTS=true
+  echo "  Local SSH key exists"
+else
+  LOCAL_KEY_EXISTS=false
+  echo "  No local SSH key found"
+fi
+
+# Determine action
+NEED_NEW_KEY=false
+REPLACE_GITHUB=false
+
+if [ "$LOCAL_KEY_EXISTS" = false ]; then
+  NEED_NEW_KEY=true
+  if [ -n "$GITHUB_KEY_EXISTS" ]; then
+    echo "  GitHub has deploy key but device doesn't - will generate new key and replace on GitHub"
+    REPLACE_GITHUB=true
+  else
+    echo "  No keys anywhere - will generate new key and add to GitHub"
+  fi
+elif [ -z "$GITHUB_KEY_EXISTS" ]; then
+  echo "  Device has key but GitHub doesn't - will add to GitHub"
+fi
+
+# Generate new key if needed
+if [ "$NEED_NEW_KEY" = true ]; then
+  echo "  Generating new SSH key..."
+  sudo -u pizero ssh-keygen -t ed25519 -C "$KEY_NAME" -f "$KEY_PATH" -N "" -q
+  chown pizero:pizero "$KEY_PATH" "$KEY_PATH.pub"
+  chmod 600 "$KEY_PATH"
+  chmod 644 "$KEY_PATH.pub"
+  echo -e "  \${GREEN}✓ SSH key generated\${NC}"
+fi
+
+# Setup SSH config for GitHub alias
+SSH_CONFIG="$SSH_DIR/config"
+if ! grep -q "Host $GITHUB_ALIAS" "$SSH_CONFIG" 2>/dev/null; then
+  cat >> "$SSH_CONFIG" << SSHCONFIGEOF
+Host $GITHUB_ALIAS
+    Hostname github.com
+    User git
+    IdentityFile $KEY_PATH
+    IdentitiesOnly yes
+SSHCONFIGEOF
+  chown pizero:pizero "$SSH_CONFIG"
+  chmod 600 "$SSH_CONFIG"
+  echo "  SSH config updated"
+fi
+
+# Add/replace key on GitHub if needed
+if [ "$NEED_NEW_KEY" = true ] || [ -z "$GITHUB_KEY_EXISTS" ]; then
+  PUBLIC_KEY=$(cat "$KEY_PATH.pub")
+
+  if [ "$REPLACE_GITHUB" = true ]; then
+    echo "  Replacing deploy key on GitHub..."
+    DEPLOY_RESULT=$(curl -s -X POST "$SETUP_URL/api/deploy-keys" \\
+      -H "Content-Type: application/json" \\
+      -d "{\\"password\\":\\"$PASSWORD\\",\\"deviceId\\":\\"$DEVICE_NAME\\",\\"publicKey\\":\\"$PUBLIC_KEY\\",\\"replace\\":true}")
+  else
+    echo "  Adding deploy key to GitHub..."
+    DEPLOY_RESULT=$(curl -s -X POST "$SETUP_URL/api/deploy-keys" \\
+      -H "Content-Type: application/json" \\
+      -d "{\\"password\\":\\"$PASSWORD\\",\\"deviceId\\":\\"$DEVICE_NAME\\",\\"publicKey\\":\\"$PUBLIC_KEY\\",\\"replace\\":false}")
+  fi
+
+  DEPLOY_SUCCESS=$(echo "$DEPLOY_RESULT" | grep -o '"success":true' || true)
+  if [ -n "$DEPLOY_SUCCESS" ]; then
+    SSH_KEY_OK=true
+    echo -e "  \${GREEN}✓ Deploy key configured on GitHub\${NC}"
+  else
+    DEPLOY_ERROR=$(echo "$DEPLOY_RESULT" | grep -o '"error":"[^"]*"' | cut -d'"' -f4 || true)
+    echo -e "  \${YELLOW}⚠ Failed to configure GitHub deploy key: $DEPLOY_ERROR\${NC}"
+  fi
+else
+  SSH_KEY_OK=true
+  echo -e "  \${GREEN}✓ SSH deploy key already configured\${NC}"
+fi
+
 # Track installation results
 VNC_OK=false
 STATUS_OK=false
 
-# Step 6: Install VNC (x11vnc + noVNC)
+# Step 7: Install VNC (x11vnc + noVNC)
 echo ""
 echo "Installing VNC support..."
 
@@ -278,7 +389,7 @@ else
   echo -e "\${YELLOW}⚠ VNC services not running (check: systemctl status x11vnc novnc)\${NC}"
 fi
 
-# Step 7: Install status endpoint with screenshot support
+# Step 8: Install status endpoint with screenshot support
 echo ""
 echo "Installing status endpoint with screenshot support..."
 
@@ -471,11 +582,17 @@ if [ "$STATUS_OK" = true ]; then
   echo -e "Status: https://$HOSTNAME/status"
 fi
 
+if [ "$SSH_KEY_OK" = true ]; then
+  echo -e "GitHub Deploy Key: \${GREEN}Configured\${NC}"
+else
+  echo -e "GitHub Deploy Key: \${YELLOW}Not configured\${NC}"
+fi
+
 echo ""
 echo "SSH: ssh -o ProxyCommand=\\"cloudflared access ssh --hostname %h\\" pizero@$HOSTNAME"
 echo ""
 
-if [ "$VNC_OK" = false ] || [ "$STATUS_OK" = false ]; then
+if [ "$VNC_OK" = false ] || [ "$STATUS_OK" = false ] || [ "$SSH_KEY_OK" = false ]; then
   echo -e "\${YELLOW}Some services failed. Debug commands:\${NC}"
   if [ "$VNC_OK" = false ]; then
     echo "  systemctl status x11vnc novnc"
@@ -483,6 +600,10 @@ if [ "$VNC_OK" = false ] || [ "$STATUS_OK" = false ]; then
   if [ "$STATUS_OK" = false ]; then
     echo "  systemctl status h2os-status"
     echo "  journalctl -u h2os-status -n 50"
+  fi
+  if [ "$SSH_KEY_OK" = false ]; then
+    echo "  Check /home/pizero/.ssh/deploy_key_groundwater"
+    echo "  Manually add key to GitHub if needed"
   fi
 fi
 `;

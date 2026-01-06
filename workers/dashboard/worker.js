@@ -6,7 +6,7 @@
  * It communicates with the API worker for data.
  */
 
-const VERSION = '2024-12-24-i'; // Increment on each deploy
+const VERSION = '2026-01-02-a'; // Increment on each deploy
 
 export default {
   async fetch(request, env) {
@@ -433,6 +433,8 @@ function getDashboardHTML() {
       min-height: 100vh;
       line-height: 1.5;
       padding-bottom: 80px;
+      /* Add safe area for iOS status bar */
+      padding-top: env(safe-area-inset-top);
     }
 
     @media (min-width: 769px) {
@@ -1086,6 +1088,8 @@ function getDashboardHTML() {
     .status-badge.partial .dot { background: var(--accent-amber); }
     .status-badge.offline { background: rgba(239, 68, 68, 0.15); color: var(--accent-red); }
     .status-badge.offline .dot { background: var(--accent-red); }
+    .status-badge.unknown { background: rgba(107, 114, 128, 0.15); color: var(--text-muted); }
+    .status-badge.unknown .dot { background: var(--text-muted); animation: pulse-gray 1.5s ease-in-out infinite; }
     .status-badge.checking { background: rgba(14, 165, 233, 0.15); color: var(--accent-blue); }
     .status-badge.checking .dot { background: var(--accent-blue); animation: pulse-blue 1s ease-in-out infinite; }
     .status-badge.rebooting { background: rgba(245, 158, 11, 0.15); color: var(--accent-amber); }
@@ -1101,6 +1105,10 @@ function getDashboardHTML() {
     @keyframes pulse-amber {
       0%, 100% { opacity: 1; transform: scale(1); }
       50% { opacity: 0.5; transform: scale(1.2); }
+    }
+    @keyframes pulse-gray {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.3; transform: scale(1.1); }
     }
 
     /* Location Row */
@@ -1755,6 +1763,84 @@ function getDashboardHTML() {
       .toast { bottom: 2rem; }
     }
 
+    /* Batch Selection Bar */
+    .batch-selection-bar {
+      position: fixed;
+      bottom: 80px;
+      left: 0;
+      right: 0;
+      background: var(--bg-card);
+      border-top: 1px solid var(--border);
+      padding: 0.75rem 1rem;
+      z-index: 90; /* Below mobile nav which is 100 */
+      /* Hide by default */
+      display: none;
+    }
+    .batch-selection-bar.active {
+      display: block;
+      animation: slideUp 0.2s ease-out;
+    }
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+    .batch-selection-content {
+      max-width: 1600px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+    }
+    .batch-count {
+      font-weight: 600;
+      color: var(--accent-cyan);
+    }
+    .batch-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+    @media (min-width: 769px) {
+      .batch-selection-bar { bottom: 0; }
+    }
+
+    /* Device Selection Checkbox */
+    .card-checkbox {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      z-index: 10;
+      width: 22px;
+      height: 22px;
+      border-radius: 4px;
+      border: 2px solid var(--border-light);
+      background: var(--bg-dark);
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+    }
+    .card-checkbox svg {
+      width: 14px;
+      height: 14px;
+      stroke: white;
+      stroke-width: 3;
+      opacity: 0;
+    }
+    .card-checkbox.checked {
+      background: var(--accent-blue);
+      border-color: var(--accent-blue);
+    }
+    .card-checkbox.checked svg { opacity: 1; }
+    .card.selected { outline: 2px solid var(--accent-blue); outline-offset: -2px; }
+    /* Show checkboxes when admin is in selection mode or hovering */
+    body.selection-mode .card-checkbox,
+    body.admin-mode .card:hover .card-checkbox { display: flex; }
+    body.admin-mode .card-checkbox { display: flex; opacity: 0.4; }
+    body.admin-mode .card:hover .card-checkbox,
+    body.admin-mode .card.selected .card-checkbox { opacity: 1; }
+
     /* Pull to refresh */
     .pull-indicator {
       position: fixed;
@@ -1864,12 +1950,14 @@ function getDashboardHTML() {
             <button class="filter-pill" data-status="healthy" onclick="setStatusFilter('healthy')">Healthy <span class="count" id="count-healthy">(0)</span></button>
             <button class="filter-pill" data-status="partial" onclick="setStatusFilter('partial')">Partial <span class="count" id="count-partial">(0)</span></button>
             <button class="filter-pill" data-status="offline" onclick="setStatusFilter('offline')">Offline <span class="count" id="count-offline">(0)</span></button>
+            <button class="filter-pill" data-status="unknown" onclick="setStatusFilter('unknown')">Loading <span class="count" id="count-unknown">(0)</span></button>
           </div>
           <select class="filter-dropdown" id="filter-dropdown" onchange="setStatusFilter(this.value)">
             <option value="all">All</option>
             <option value="healthy">Healthy</option>
             <option value="partial">Partial</option>
             <option value="offline">Offline</option>
+            <option value="unknown">Loading</option>
           </select>
         </div>
         <div class="section-divider"></div>
@@ -2010,11 +2098,64 @@ function getDashboardHTML() {
           <label style="display: block; color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.5rem;">Name</label>
           <input type="text" id="edit-friendly-name" style="width: 100%; padding: 0.75rem; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-size: 1rem;" placeholder="Friendly name">
         </div>
-        <div style="margin-bottom: 1.5rem;">
+        <div style="margin-bottom: 1rem;">
           <label style="display: block; color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.5rem;">Location</label>
           <input type="text" id="edit-location" style="width: 100%; padding: 0.75rem; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-size: 1rem;" placeholder="Location">
         </div>
+        <div style="margin-bottom: 1.5rem;">
+          <label style="display: block; color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.5rem;">VNC Account</label>
+          <select id="edit-vnc-account" style="width: 100%; padding: 0.75rem; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-size: 1rem;">
+            <option value="">Not Set</option>
+            <option value="VNC1">VNC1</option>
+            <option value="VNC2">VNC2</option>
+          </select>
+        </div>
         <button onclick="saveDeviceEdit()" id="edit-save-btn" style="width: 100%; padding: 0.75rem; background: var(--accent-blue); border: none; border-radius: 8px; color: white; font-size: 1rem; cursor: pointer; font-weight: 500;">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Batch Edit Modal -->
+  <div class="modal" id="batch-edit-modal">
+    <div class="modal-content" style="max-width: 400px;">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h2 id="batch-edit-modal-title">Batch Edit</h2>
+          <p id="batch-edit-modal-subtitle">0 devices selected</p>
+        </div>
+        <button class="modal-close" onclick="closeBatchEditModal()">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div id="batch-edit-modal-body" style="padding: 1.5rem;">
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">Only fill in fields you want to change. Empty fields will not be modified.</p>
+        <div style="margin-bottom: 1rem;">
+          <label style="display: block; color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.5rem;">Location</label>
+          <input type="text" id="batch-edit-location" style="width: 100%; padding: 0.75rem; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-size: 1rem;" placeholder="Leave empty to keep current">
+        </div>
+        <div style="margin-bottom: 1.5rem;">
+          <label style="display: block; color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.5rem;">VNC Account</label>
+          <select id="batch-edit-vnc-account" style="width: 100%; padding: 0.75rem; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-size: 1rem;">
+            <option value="">-- Don't change --</option>
+            <option value="VNC1">VNC1</option>
+            <option value="VNC2">VNC2</option>
+            <option value="__clear__">Clear (remove value)</option>
+          </select>
+        </div>
+        <button onclick="saveBatchEdit()" id="batch-edit-save-btn" style="width: 100%; padding: 0.75rem; background: var(--accent-blue); border: none; border-radius: 8px; color: white; font-size: 1rem; cursor: pointer; font-weight: 500;">Apply to Selected Devices</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Batch Selection Bar -->
+  <div class="batch-selection-bar" id="batch-selection-bar">
+    <div class="batch-selection-content">
+      <span class="batch-count"><span id="batch-count-num">0</span> selected</span>
+      <div class="batch-actions">
+        <button class="btn btn-secondary" onclick="showBatchEditModal()">Edit Selected</button>
+        <button class="btn btn-secondary" onclick="clearSelection()">Clear Selection</button>
       </div>
     </div>
   </div>
@@ -2048,6 +2189,7 @@ function getDashboardHTML() {
     let currentUserEmail = '';
     let isCurrentUserAdmin = false;
     let activeAbortControllers = [];
+    let selectedDevices = new Set(); // For batch selection
 
     // Icons
     const icons = {
@@ -2100,6 +2242,11 @@ function getDashboardHTML() {
         currentUserEmail = data.userEmail || '';
         isCurrentUserAdmin = data.isAdmin || false;
 
+        // Add admin-mode class to body for checkbox visibility
+        if (isCurrentUserAdmin) {
+          document.body.classList.add('admin-mode');
+        }
+
         // Show user pill and set dropdown email
         if (data.userEmail && data.userEmail !== 'anonymous') {
           const pill = document.getElementById('user-pill');
@@ -2145,16 +2292,31 @@ function getDashboardHTML() {
     // Load devices
     async function loadDevices() {
       try {
+        // First, load basic device list quickly
         const res = await fetch(API_BASE + '/api/devices');
         const data = await res.json();
         devices = data.devices;
+
+        // Initialize status as unknown for all devices
+        deviceStatuses = {};
+        deviceStatusData = {};
+        devices.forEach(device => {
+          deviceStatuses[device.device_id] = 'unknown';
+          deviceStatusData[device.device_id] = null;
+        });
+
         screenshotCache = {}; // Clear screenshot cache on full refresh
         document.getElementById('skeleton-loader').style.display = 'none';
         document.getElementById('devices-container').style.display = 'block';
         populateLocationDropdown();
         renderDevices();
-        await checkAllStatus(); // Wait for status checks before loading screenshots
-        loadAllCardScreenshots(); // Now we know which devices are offline
+        updateSummaryStats();
+
+        // Then progressively check status for each device
+        checkAllStatusProgressive();
+
+        // Start loading screenshots immediately (they'll use proxy endpoint)
+        loadAllCardScreenshots();
         updateLastUpdate();
       } catch (err) {
         showToast('Error loading devices', true);
@@ -2194,6 +2356,22 @@ function getDashboardHTML() {
       checkOfflineAlerts();
     }
 
+    // Progressively check status for all devices
+    async function checkAllStatusProgressive() {
+      previousStatuses = {...deviceStatuses};
+
+      // Check devices in small batches to avoid overloading
+      const batchSize = 5;
+      for (let i = 0; i < devices.length; i += batchSize) {
+        const batch = devices.slice(i, i + batchSize);
+        const promises = batch.map(d => checkDeviceStatusProxy(d));
+        await Promise.all(promises);
+        updateSummaryStats(); // Update stats after each batch
+      }
+
+      checkOfflineAlerts();
+    }
+
     // Check single device status
     async function checkDeviceStatus(device) {
       const badge = document.getElementById('status-' + device.device_id);
@@ -2215,8 +2393,8 @@ function getDashboardHTML() {
         deviceStatuses[device.device_id] = data.status;
         deviceStatusData[device.device_id] = data; // Store full status data
 
-        const statusClass = data.status === 'healthy' ? 'online' : data.status === 'partial' ? 'partial' : 'offline';
-        const statusText = data.status === 'healthy' ? 'Online' : data.status === 'partial' ? 'Partial' : 'Offline';
+        const statusClass = data.status === 'healthy' ? 'online' : data.status === 'partial' ? 'partial' : data.status === 'unknown' ? 'unknown' : 'offline';
+        const statusText = data.status === 'healthy' ? 'Online' : data.status === 'partial' ? 'Partial' : data.status === 'unknown' ? 'Loading' : 'Offline';
         badge.className = 'status-badge ' + statusClass;
         badge.innerHTML = '<span class="dot"></span><span class="status-text">' + statusText + '</span>';
 
@@ -2322,10 +2500,100 @@ function getDashboardHTML() {
       if (!device) return;
       btn.classList.add('loading');
       delete screenshotCache[deviceId]; // Clear cache to force screenshot refresh
-      await checkDeviceStatus(device);
-      loadCardScreenshot(deviceId); // Reload screenshot
-      btn.classList.remove('loading');
-      updateSummaryStats();
+
+      try {
+        // Use device filter to get just this device's updated status
+        const response = await fetch(API_BASE + '/api/fleet-status?device=' + deviceId);
+        if (!response.ok) throw new Error('Failed to fetch device status');
+
+        const data = await response.json();
+        const deviceData = data.devices.find(d => d.device_id === deviceId);
+
+        if (deviceData) {
+          // Update this device's status in the local state
+          deviceStatuses[deviceId] = deviceData.status;
+          deviceStatusData[deviceId] = deviceData;
+
+          // Update the UI for just this device
+          updateSingleDeviceUI(deviceId, deviceData);
+
+          // Update the counts in filter pills
+          updateFilterCounts();
+        }
+
+        loadCardScreenshot(deviceId); // Reload screenshot
+      } catch (error) {
+        console.error('Failed to refresh device:', error);
+        showToast('Failed to refresh device status', true);
+      } finally {
+        btn.classList.remove('loading');
+      }
+    }
+
+    // Update UI for a single device
+    function updateSingleDeviceUI(deviceId, data) {
+      const badge = document.getElementById('status-' + deviceId);
+      const servicesDiv = document.getElementById('services-' + deviceId);
+
+      if (badge) {
+        const statusClass = data.status === 'healthy' ? 'online' : data.status === 'partial' ? 'partial' : data.status === 'unknown' ? 'unknown' : 'offline';
+        const statusText = data.status === 'healthy' ? 'Online' : data.status === 'partial' ? 'Partial' : data.status === 'unknown' ? 'Loading' : 'Offline';
+        badge.className = 'status-badge ' + statusClass;
+        badge.innerHTML = '<span class="dot"></span><span class="status-text">' + statusText + '</span>';
+      }
+
+      if (servicesDiv && data.services) {
+        const servicesHTML = Object.entries(data.services || {}).map(([service, running]) =>
+          '<span class="service ' + (running ? 'running' : 'stopped') + '" title="' + service + '">' + service.replace(/[-_]/g, ' ') + '</span>'
+        ).join('');
+        servicesDiv.innerHTML = servicesHTML;
+        deviceServicesHTML[deviceId] = servicesHTML;
+      }
+    }
+
+    // Helper functions for status display
+    function getStatusClass(deviceId) {
+      const status = deviceStatuses[deviceId];
+      if (status === 'healthy') return 'online';
+      if (status === 'partial') return 'partial';
+      return 'offline';
+    }
+
+    function getStatusText(deviceId) {
+      const status = deviceStatuses[deviceId];
+      if (status === 'healthy') return 'Online';
+      if (status === 'partial') return 'Partial';
+      if (status === 'offline') return 'Offline';
+      return 'Unknown';
+    }
+
+    function renderServicesHTML(deviceId) {
+      const data = deviceStatusData[deviceId];
+      if (!data || data.status === 'offline') {
+        return '<div class="services-header"><span class="services-title">Services</span><div class="services-progress"><div class="progress-bar"><div class="progress-fill bad" style="width:0%"></div></div><span class="progress-text">-/-</span></div></div><div class="services-placeholder" style="color:var(--accent-red)">Unable to connect</div>';
+      }
+
+      const services = data.services || {};
+      const running = data.running || 0;
+      const total = data.total || 6;
+      const percent = total > 0 ? Math.round((running / total) * 100) : 0;
+      const progressClass = running === total ? 'good' : running > 0 ? 'partial' : 'bad';
+
+      let html = '<div class="services-header"><span class="services-title">Services</span><div class="services-progress"><div class="progress-bar"><div class="progress-fill ' + progressClass + '" style="width:' + percent + '%"></div></div><span class="progress-text">' + running + '/' + total + '</span></div></div>';
+
+      if (services && Object.keys(services).length > 0) {
+        html += '<div class="services-list">';
+        for (const [service, isRunning] of Object.entries(services)) {
+          html += '<div class="service-item"><span class="service-dot ' + (isRunning ? 'running' : 'stopped') + '"></span><span class="service-name" title="' + service + '">' + service + '</span></div>';
+        }
+        html += '</div>';
+
+        if (data.uptime) {
+          html += '<div class="uptime-text">Uptime: ' + data.uptime + '</div>';
+        }
+      }
+
+      return html;
     }
 
     // Update summary stats
@@ -2333,6 +2601,7 @@ function getDashboardHTML() {
       const healthy = Object.values(deviceStatuses).filter(s => s === 'healthy').length;
       const partial = Object.values(deviceStatuses).filter(s => s === 'partial').length;
       const offline = Object.values(deviceStatuses).filter(s => s === 'offline').length;
+      const unknown = Object.values(deviceStatuses).filter(s => s === 'unknown').length;
       const total = devices.length;
 
       document.getElementById('stat-healthy').textContent = healthy;
@@ -2344,6 +2613,7 @@ function getDashboardHTML() {
       document.getElementById('count-healthy').textContent = '(' + healthy + ')';
       document.getElementById('count-partial').textContent = '(' + partial + ')';
       document.getElementById('count-offline').textContent = '(' + offline + ')';
+      document.getElementById('count-unknown').textContent = '(' + unknown + ')';
 
       // Update model filter counts
       let pi5Count = 0, pi4Count = 0;
@@ -2366,6 +2636,50 @@ function getDashboardHTML() {
     }
 
     // Check for offline alerts
+    // Check device status using proxy endpoint
+    async function checkDeviceStatusProxy(device) {
+      const badge = document.getElementById('status-' + device.device_id);
+      const servicesDiv = document.getElementById('services-' + device.device_id);
+      if (!badge) return;
+
+      badge.className = 'status-badge checking';
+      badge.innerHTML = '<span class="dot"></span><span class="status-text">Checking</span>';
+
+      try {
+        const res = await fetch(API_BASE + '/api/device-status/' + device.device_id);
+        const data = await res.json();
+
+        if (data.online) {
+          deviceStatuses[device.device_id] = data.status;
+          deviceStatusData[device.device_id] = data;
+
+          const statusClass = data.status === 'healthy' ? 'online' : data.status === 'partial' ? 'partial' : data.status === 'unknown' ? 'unknown' : 'offline';
+          const statusText = data.status === 'healthy' ? 'Online' : data.status === 'partial' ? 'Partial' : data.status === 'unknown' ? 'Loading' : 'Offline';
+          badge.className = 'status-badge ' + statusClass;
+          badge.innerHTML = '<span class="dot"></span><span class="status-text">' + statusText + '</span>';
+
+          // Render services
+          if (servicesDiv) {
+            servicesDiv.innerHTML = renderServicesHTML(device.device_id);
+          }
+        } else {
+          deviceStatuses[device.device_id] = 'offline';
+          badge.className = 'status-badge offline';
+          badge.innerHTML = '<span class="dot"></span><span class="status-text">Offline</span>';
+          if (servicesDiv) {
+            servicesDiv.innerHTML = renderServicesHTML(device.device_id);
+          }
+        }
+      } catch (err) {
+        deviceStatuses[device.device_id] = 'offline';
+        badge.className = 'status-badge offline';
+        badge.innerHTML = '<span class="dot"></span><span class="status-text">Offline</span>';
+        if (servicesDiv) {
+          servicesDiv.innerHTML = renderServicesHTML(device.device_id);
+        }
+      }
+    }
+
     function checkOfflineAlerts() {
       for (const [deviceId, status] of Object.entries(deviceStatuses)) {
         if (status === 'offline' && previousStatuses[deviceId] && previousStatuses[deviceId] !== 'offline') {
@@ -2394,11 +2708,59 @@ function getDashboardHTML() {
       const mobileBtn = document.getElementById('mobile-refresh-btn');
       if (mobileBtn) mobileBtn.classList.add('active');
 
-      await loadDevices();
+      // If we have active filters (not "all"), use optimized refresh
+      if (statusFilter !== 'all' || locationFilter !== 'all' || modelFilter !== 'all') {
+        await refreshFilteredDevices();
+      } else {
+        await loadDevices();
+      }
 
       document.getElementById('refresh-btn').classList.remove('loading');
       if (mobileBtn) mobileBtn.classList.remove('active');
       isRefreshing = false;
+    }
+
+    // Optimized refresh for filtered view - only refresh visible devices
+    async function refreshFilteredDevices() {
+      try {
+        // Build API query based on current filters
+        let apiQuery = '';
+        const queryParams = [];
+
+        if (statusFilter !== 'all') {
+          queryParams.push('status=' + statusFilter);
+        }
+        if (locationFilter !== 'all') {
+          queryParams.push('location=' + encodeURIComponent(locationFilter));
+        }
+        // Note: modelFilter is client-side only, API doesn't support it
+
+        if (queryParams.length > 0) {
+          apiQuery = '?' + queryParams.join('&');
+        }
+
+        const response = await fetch(API_BASE + '/api/fleet-status' + apiQuery);
+        if (!response.ok) throw new Error('Failed to fetch filtered status');
+
+        const data = await response.json();
+
+        // Update only the devices that match our filters
+        data.devices.forEach(deviceData => {
+          deviceStatuses[deviceData.device_id] = deviceData.status;
+          deviceStatusData[deviceData.device_id] = deviceData;
+          updateSingleDeviceUI(deviceData.device_id, deviceData);
+        });
+
+        // Update filter counts
+        updateFilterCounts();
+        updateLastUpdate();
+
+        showToast('Refreshed ' + data.devices.length + ' filtered devices');
+      } catch (error) {
+        console.error('Filtered refresh failed:', error);
+        // Fallback to full refresh
+        await loadDevices();
+      }
     }
 
     // Update last update time
@@ -2571,7 +2933,7 @@ function getDashboardHTML() {
         const loc = (d.location || d.friendly_name || 'Unknown').trim();
         const matchesSearch = !searchTerm || name.includes(searchTerm) || loc.toLowerCase().includes(searchTerm) || d.device_id.toLowerCase().includes(searchTerm);
         const status = deviceStatuses[d.device_id] || 'unknown';
-        const matchesStatus = statusFilter === 'all' || status === statusFilter || (statusFilter === 'healthy' && status === 'healthy') || (statusFilter === 'partial' && status === 'partial') || (statusFilter === 'offline' && (status === 'offline' || status === 'unknown'));
+        const matchesStatus = statusFilter === 'all' || status === statusFilter;
         const matchesLocation = locationFilter === 'all' || loc === locationFilter;
         const statusData = deviceStatusData[d.device_id] || {};
         const piVersion = getPiVersion(statusData.pi_model);
@@ -2660,8 +3022,8 @@ function getDashboardHTML() {
         const status = deviceStatuses[deviceId];
 
         if (badge && status) {
-          const statusClass = status === 'healthy' ? 'online' : status === 'partial' ? 'partial' : 'offline';
-          const statusText = status === 'healthy' ? 'Online' : status === 'partial' ? 'Partial' : 'Offline';
+          const statusClass = status === 'healthy' ? 'online' : status === 'partial' ? 'partial' : status === 'unknown' ? 'unknown' : 'offline';
+          const statusText = status === 'healthy' ? 'Online' : status === 'partial' ? 'Partial' : status === 'unknown' ? 'Loading' : 'Offline';
           badge.className = 'status-badge ' + statusClass;
           badge.innerHTML = '<span class="dot"></span><span class="status-text">' + statusText + '</span>';
         }
@@ -2710,8 +3072,10 @@ function getDashboardHTML() {
       const displayName = device.friendly_name || device.device_id;
       const subtitle = device.friendly_name ? device.device_id : '';
       const hiddenClass = isHidden ? ' hidden' : '';
+      const isSelected = selectedDevices.has(device.device_id);
 
-      return '<div class="card' + (isPinned ? ' pinned' : '') + hiddenClass + '" data-device-id="' + device.device_id + '" data-location="' + (device.location || 'No Location') + '">' +
+      return '<div class="card' + (isPinned ? ' pinned' : '') + (isSelected ? ' selected' : '') + hiddenClass + '" data-device-id="' + device.device_id + '" data-location="' + (device.location || 'No Location') + '">' +
+        '<div class="card-checkbox' + (isSelected ? ' checked' : '') + '" onclick="toggleDeviceSelection(\\'' + device.device_id + '\\', event)"><svg viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12"/></svg></div>' +
         '<div class="card-screenshot" id="screenshot-' + device.device_id + '" data-hostname="' + device.hostname + '">' +
           '<div class="screenshot-loader">' + icons.refresh + '</div>' +
           '<img style="display:none" />' +
@@ -2726,14 +3090,14 @@ function getDashboardHTML() {
             (subtitle ? '<div class="card-subtitle">' + subtitle + '</div>' : '') +
           '</div>' +
           '<div class="card-right">' +
-            '<div class="status-badge" id="status-' + device.device_id + '"><span class="dot"></span><span class="status-text">Unknown</span></div>' +
+            '<div class="status-badge ' + getStatusClass(device.device_id) + '" id="status-' + device.device_id + '"><span class="dot"></span><span class="status-text">' + getStatusText(device.device_id) + '</span></div>' +
           '</div>' +
         '</div>' +
         '<div class="location-row">' +
           (showLocation && device.location ? '<span class="location-tag">' + icons.location + device.location + '</span>' : '') +
           '<span class="device-time-inline" id="device-time-' + device.device_id + '"></span>' +
         '</div>' +
-        '<div class="services" id="services-' + device.device_id + '"><div class="services-header"><span class="services-title">Services</span><div class="services-progress"><div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div><span class="progress-text">-/-</span></div></div><div class="services-placeholder">Checking...</div></div>' +
+        '<div class="services" id="services-' + device.device_id + '">' + renderServicesHTML(device.device_id) + '</div>' +
         '<div class="buttons">' +
           '<button class="btn-icon" onclick="showDetails(\\'' + device.device_id + '\\')" title="Details">' + icons.eye + '</button>' +
           '<button class="btn-icon" onclick="showScreenshot(\\'' + device.hostname + '\\', \\'' + displayName.replace(/'/g, "\\\\'") + '\\')" title="Screenshot">' + icons.camera + '</button>' +
@@ -2863,24 +3227,35 @@ function getDashboardHTML() {
 
     // Screenshot modal
     async function showScreenshot(hostname, deviceName) {
+      // Find device to get device_id
+      const device = devices.find(d => d.hostname === hostname);
+      const deviceId = device ? device.device_id : null;
+
       document.getElementById('modal-title').textContent = deviceName + ' - Screenshot';
       document.getElementById('modal-subtitle').textContent = hostname;
       document.getElementById('modal-body').innerHTML =
         '<div class="screenshot-container"><div class="screenshot-loading">Loading screenshot...</div><img class="screenshot-img" style="display:none" /></div>' +
         '<div class="modal-actions" style="margin-top:1rem">' +
         '<button class="btn btn-secondary" onclick="refreshScreenshot(\\'' + hostname + '\\')" style="flex:1">Refresh</button>' +
-        '<a class="btn btn-primary" href="https://' + hostname + '/screenshot" target="_blank" style="flex:1">Download</a></div>';
+        '<a class="btn btn-primary" href="' + (deviceId ? API_BASE + '/api/device-screenshot/' + deviceId : 'https://' + hostname + '/screenshot') + '" target="_blank" style="flex:1">Download</a></div>';
       document.getElementById('modal').classList.add('active');
-      loadScreenshot(hostname);
+      loadScreenshot(hostname, deviceId);
     }
 
-    function loadScreenshot(hostname) {
+    function loadScreenshot(hostname, deviceId) {
       const container = document.querySelector('.screenshot-container');
       const loading = container.querySelector('.screenshot-loading');
       const img = container.querySelector('.screenshot-img');
       img.onload = () => { loading.style.display = 'none'; img.style.display = 'block'; };
       img.onerror = () => { loading.textContent = 'Failed to load'; loading.style.color = 'var(--accent-red)'; };
-      img.src = 'https://' + hostname + '/screenshot?t=' + Date.now();
+
+      if (deviceId) {
+        // Use proxy endpoint
+        img.src = API_BASE + '/api/device-screenshot/' + deviceId + '?t=' + Date.now();
+      } else {
+        // Fallback to direct URL (will likely fail due to CORS)
+        img.src = 'https://' + hostname + '/screenshot?t=' + Date.now();
+      }
     }
 
     function refreshScreenshot(hostname) {
@@ -2891,7 +3266,9 @@ function getDashboardHTML() {
         loading.style.color = '';
         loading.textContent = 'Loading screenshot...';
         img.style.display = 'none';
-        loadScreenshot(hostname);
+        // Find device to get device_id
+        const device = devices.find(d => d.hostname === hostname);
+        loadScreenshot(hostname, device ? device.device_id : null);
       }
     }
 
@@ -2918,7 +3295,8 @@ function getDashboardHTML() {
       const hostname = container.dataset.hostname;
       const loader = container.querySelector('.screenshot-loader');
       const img = container.querySelector('img');
-      const url = 'https://' + hostname + '/screenshot?t=' + Date.now();
+      // Use proxy endpoint to avoid CORS
+      const url = API_BASE + '/api/device-screenshot/' + deviceId + '?t=' + Date.now();
 
       img.onload = () => {
         loader.style.display = 'none';
@@ -2948,7 +3326,8 @@ function getDashboardHTML() {
       container.classList.remove('failed');
 
       const hostname = container.dataset.hostname;
-      const url = 'https://' + hostname + '/screenshot?t=' + Date.now();
+      // Use proxy endpoint to avoid CORS
+      const url = API_BASE + '/api/device-screenshot/' + deviceId + '?t=' + Date.now();
       img.onload = () => {
         loader.style.display = 'none';
         img.style.display = 'block';
@@ -3036,7 +3415,7 @@ function getDashboardHTML() {
         filterLabel.textContent = 'Filter';
         filterBtn.classList.remove('active');
       } else {
-        const labels = { healthy: 'Online', partial: 'Partial', offline: 'Offline' };
+        const labels = { healthy: 'Online', partial: 'Partial', offline: 'Offline', unknown: 'Loading' };
         filterLabel.textContent = labels[statusFilter] || statusFilter;
         filterBtn.classList.add('active');
       }
@@ -3079,6 +3458,7 @@ function getDashboardHTML() {
       document.getElementById('edit-modal-subtitle').textContent = deviceId;
       document.getElementById('edit-friendly-name').value = device.friendly_name || '';
       document.getElementById('edit-location').value = device.location || '';
+      document.getElementById('edit-vnc-account').value = device.vnc_account || '';
       document.getElementById('edit-modal').classList.add('active');
     }
 
@@ -3136,7 +3516,8 @@ function getDashboardHTML() {
           credentials: 'include',
           body: JSON.stringify({
             friendly_name: document.getElementById('edit-friendly-name').value.trim(),
-            location: document.getElementById('edit-location').value.trim()
+            location: document.getElementById('edit-location').value.trim(),
+            vnc_account: document.getElementById('edit-vnc-account').value
           })
         });
 
@@ -3164,6 +3545,134 @@ function getDashboardHTML() {
     // Close edit modal on backdrop click
     document.getElementById('edit-modal').addEventListener('click', function(e) {
       if (e.target === this) closeEditModal();
+    });
+
+    // Batch Selection Functions
+    function toggleDeviceSelection(deviceId, event) {
+      event.stopPropagation();
+      if (selectedDevices.has(deviceId)) {
+        selectedDevices.delete(deviceId);
+      } else {
+        selectedDevices.add(deviceId);
+      }
+      updateSelectionUI();
+    }
+
+    function updateSelectionUI() {
+      const count = selectedDevices.size;
+      document.getElementById('batch-count-num').textContent = count;
+
+      // Show/hide batch selection bar
+      const bar = document.getElementById('batch-selection-bar');
+      if (count > 0) {
+        bar.classList.add('active');
+        document.body.classList.add('selection-mode');
+      } else {
+        bar.classList.remove('active');
+        document.body.classList.remove('selection-mode');
+      }
+
+      // Update card visual states
+      document.querySelectorAll('.card').forEach(card => {
+        const deviceId = card.dataset.deviceId;
+        const checkbox = card.querySelector('.card-checkbox');
+        if (selectedDevices.has(deviceId)) {
+          card.classList.add('selected');
+          if (checkbox) checkbox.classList.add('checked');
+        } else {
+          card.classList.remove('selected');
+          if (checkbox) checkbox.classList.remove('checked');
+        }
+      });
+    }
+
+    function clearSelection() {
+      selectedDevices.clear();
+      updateSelectionUI();
+    }
+
+    function showBatchEditModal() {
+      if (selectedDevices.size === 0) {
+        showToast('No devices selected', true);
+        return;
+      }
+      document.getElementById('batch-edit-modal-subtitle').textContent = selectedDevices.size + ' devices selected';
+      document.getElementById('batch-edit-location').value = '';
+      document.getElementById('batch-edit-vnc-account').value = '';
+      document.getElementById('batch-edit-modal').classList.add('active');
+    }
+
+    function closeBatchEditModal() {
+      document.getElementById('batch-edit-modal').classList.remove('active');
+    }
+
+    async function saveBatchEdit() {
+      if (selectedDevices.size === 0) return;
+
+      const btn = document.getElementById('batch-edit-save-btn');
+      const originalText = btn.textContent;
+      btn.textContent = 'Saving...';
+      btn.disabled = true;
+
+      const location = document.getElementById('batch-edit-location').value.trim();
+      const vncAccountSelect = document.getElementById('batch-edit-vnc-account').value;
+
+      // Build update payload - only include fields that have values
+      const payload = { device_ids: Array.from(selectedDevices) };
+
+      if (location) {
+        payload.location = location;
+      }
+      if (vncAccountSelect) {
+        // Handle "clear" option
+        payload.vnc_account = vncAccountSelect === '__clear__' ? '' : vncAccountSelect;
+      }
+
+      // Check if any field is being updated
+      if (!location && !vncAccountSelect) {
+        showToast('No changes to apply', true);
+        btn.textContent = originalText;
+        btn.disabled = false;
+        return;
+      }
+
+      try {
+        const res = await fetch(API_BASE + '/api/devices/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (data.success) {
+          // Update local device data
+          if (data.devices) {
+            data.devices.forEach(updatedDevice => {
+              const idx = devices.findIndex(d => d.device_id === updatedDevice.device_id);
+              if (idx !== -1) {
+                devices[idx] = { ...devices[idx], ...updatedDevice };
+              }
+            });
+          }
+          closeBatchEditModal();
+          clearSelection();
+          renderDevices();
+          showToast('Updated ' + data.updated_count + ' devices');
+        } else {
+          showToast(data.error || 'Failed to update', true);
+        }
+      } catch (err) {
+        showToast('Error: ' + err.message, true);
+      } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }
+    }
+
+    // Close batch edit modal on backdrop click
+    document.getElementById('batch-edit-modal').addEventListener('click', function(e) {
+      if (e.target === this) closeBatchEditModal();
     });
 
     // Init
