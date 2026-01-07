@@ -1462,6 +1462,31 @@ function getDashboardHTML() {
       max-height: 85vh;
       overflow-y: auto;
     }
+    /* Lightbox mode for screenshots */
+    .modal.lightbox .modal-content {
+      max-width: 95vw;
+      max-height: 95vh;
+      padding: 1rem;
+      background: rgba(15, 23, 42, 0.98);
+    }
+    .modal.lightbox .modal-header {
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.75rem;
+    }
+    .modal.lightbox .screenshot-container {
+      min-height: unset;
+      padding: 0;
+      background: transparent;
+    }
+    .modal.lightbox .screenshot-img {
+      max-width: 100%;
+      max-height: calc(95vh - 140px);
+      width: auto;
+      height: auto;
+    }
+    .modal.lightbox .modal-actions {
+      margin-top: 0.75rem;
+    }
     .modal-header {
       display: flex;
       justify-content: space-between;
@@ -3267,7 +3292,9 @@ function getDashboardHTML() {
     }
 
     function closeModal() {
-      document.getElementById('modal').classList.remove('active');
+      const modal = document.getElementById('modal');
+      modal.classList.remove('active');
+      modal.classList.remove('lightbox');
     }
 
     document.getElementById('modal').addEventListener('click', (e) => {
@@ -3278,20 +3305,22 @@ function getDashboardHTML() {
       if (e.key === 'Escape') closeModal();
     });
 
-    // Screenshot modal
+    // Screenshot modal (lightbox mode)
     async function showScreenshot(hostname, deviceName) {
       // Find device to get device_id
       const device = devices.find(d => d.hostname === hostname);
       const deviceId = device ? device.device_id : null;
 
-      document.getElementById('modal-title').textContent = deviceName + ' - Screenshot';
+      const modal = document.getElementById('modal');
+      modal.classList.add('lightbox');
+      document.getElementById('modal-title').textContent = deviceName;
       document.getElementById('modal-subtitle').textContent = hostname;
       document.getElementById('modal-body').innerHTML =
         '<div class="screenshot-container"><div class="screenshot-loading">Loading screenshot...</div><img class="screenshot-img" style="display:none" /></div>' +
-        '<div class="modal-actions" style="margin-top:1rem">' +
+        '<div class="modal-actions">' +
         '<button class="btn btn-secondary" onclick="refreshScreenshot(\\'' + hostname + '\\')" style="flex:1">Refresh</button>' +
         '<a class="btn btn-primary" href="' + (deviceId ? API_BASE + '/api/device-screenshot/' + deviceId : 'https://' + hostname + '/screenshot') + '" target="_blank" style="flex:1">Download</a></div>';
-      document.getElementById('modal').classList.add('active');
+      modal.classList.add('active');
       loadScreenshot(hostname, deviceId);
     }
 
