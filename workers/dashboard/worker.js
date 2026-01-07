@@ -2547,10 +2547,8 @@ function getDashboardHTML() {
         badge.innerHTML = '<span class="dot"></span><span class="status-text">' + statusText + '</span>';
       }
 
-      if (servicesDiv && data.services) {
-        const servicesHTML = Object.entries(data.services || {}).map(([service, running]) =>
-          '<span class="service ' + (running ? 'running' : 'stopped') + '" title="' + service + '">' + service.replace(/[-_]/g, ' ') + '</span>'
-        ).join('');
+      if (servicesDiv) {
+        const servicesHTML = renderServicesHTML(deviceId);
         servicesDiv.innerHTML = servicesHTML;
         deviceServicesHTML[deviceId] = servicesHTML;
       }
@@ -2569,7 +2567,7 @@ function getDashboardHTML() {
       if (status === 'healthy') return 'Online';
       if (status === 'partial') return 'Partial';
       if (status === 'offline') return 'Offline';
-      return 'Unknown';
+      return 'Loading';
     }
 
     function renderServicesHTML(deviceId) {

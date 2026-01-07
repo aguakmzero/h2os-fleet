@@ -1179,6 +1179,11 @@ async function handleDeviceStatus(request, env, corsHeaders, deviceId) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const status = await res.json();
 
+      // Update last_seen timestamp (non-blocking)
+      env.DB.prepare(
+        "UPDATE devices SET last_seen = datetime('now') WHERE device_id = ?"
+      ).bind(deviceId).run().catch(() => {});
+
       return new Response(JSON.stringify({
         device_id: deviceId,
         ...status,
