@@ -2497,6 +2497,8 @@ function getDashboardHTML() {
           servicesDiv.innerHTML = html;
           deviceServicesHTML[device.device_id] = html; // Cache for re-render
         }
+        // Stop screenshot spinner for offline device
+        markScreenshotOffline(device.device_id);
       }
     }
 
@@ -2656,13 +2658,15 @@ function getDashboardHTML() {
         const data = await res.json();
 
         if (data.online) {
-          deviceStatuses[device.device_id] = data.status;
+          // Default to 'healthy' if online but no status field
+          const status = data.status || 'healthy';
+          deviceStatuses[device.device_id] = status;
           deviceStatusData[device.device_id] = data;
 
           // Update UI if element exists
           if (badge) {
-            const statusClass = data.status === 'healthy' ? 'online' : data.status === 'partial' ? 'partial' : data.status === 'unknown' ? 'unknown' : 'offline';
-            const statusText = data.status === 'healthy' ? 'Online' : data.status === 'partial' ? 'Partial' : data.status === 'unknown' ? 'Loading' : 'Offline';
+            const statusClass = status === 'healthy' ? 'online' : status === 'partial' ? 'partial' : status === 'unknown' ? 'unknown' : 'offline';
+            const statusText = status === 'healthy' ? 'Online' : status === 'partial' ? 'Partial' : status === 'unknown' ? 'Loading' : 'Offline';
             badge.className = 'status-badge ' + statusClass;
             badge.innerHTML = '<span class="dot"></span><span class="status-text">' + statusText + '</span>';
           }
@@ -2683,6 +2687,8 @@ function getDashboardHTML() {
           if (servicesDiv) {
             servicesDiv.innerHTML = renderServicesHTML(device.device_id);
           }
+          // Stop screenshot spinner for offline device
+          markScreenshotOffline(device.device_id);
         }
       } catch (err) {
         deviceStatuses[device.device_id] = 'offline';
@@ -2693,7 +2699,21 @@ function getDashboardHTML() {
         if (servicesDiv) {
           servicesDiv.innerHTML = renderServicesHTML(device.device_id);
         }
+        // Stop screenshot spinner for offline device
+        markScreenshotOffline(device.device_id);
       }
+    }
+
+    // Mark screenshot area as offline (stop spinner, show "Offline")
+    function markScreenshotOffline(deviceId) {
+      const container = document.getElementById('screenshot-' + deviceId);
+      if (!container) return;
+      const loader = container.querySelector('.screenshot-loader');
+      if (loader) {
+        loader.innerHTML = 'Offline';
+        loader.style.opacity = '0.5';
+      }
+      container.classList.add('failed');
     }
 
     function checkOfflineAlerts() {
