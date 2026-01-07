@@ -11,3 +11,7 @@ routes = [
 
 # No database needed - dashboard fetches from API worker
 # No secrets needed - all data via API worker
+
+# Default version for local dev (overridden by deploy.sh)
+[define]
+VERSION = "'dev'"

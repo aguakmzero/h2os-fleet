@@ -6,7 +6,7 @@
  * It communicates with the API worker for data.
  */
 
-const VERSION = '2026-01-02-a'; // Increment on each deploy
+// VERSION is injected at deploy time via --define (see deploy.sh)
 
 export default {
   async fetch(request, env) {
@@ -2367,6 +2367,11 @@ function getDashboardHTML() {
         const promises = batch.map(d => checkDeviceStatusProxy(d));
         await Promise.all(promises);
         updateSummaryStats(); // Update stats after each batch
+
+        // Re-render if filters are active so newly matched devices appear
+        if (statusFilter !== 'all' || locationFilter !== 'all' || modelFilter !== 'all') {
+          renderDevices();
+        }
       }
 
       checkOfflineAlerts();
@@ -2640,10 +2645,12 @@ function getDashboardHTML() {
     async function checkDeviceStatusProxy(device) {
       const badge = document.getElementById('status-' + device.device_id);
       const servicesDiv = document.getElementById('services-' + device.device_id);
-      if (!badge) return;
 
-      badge.className = 'status-badge checking';
-      badge.innerHTML = '<span class="dot"></span><span class="status-text">Checking</span>';
+      // Show checking state if element exists
+      if (badge) {
+        badge.className = 'status-badge checking';
+        badge.innerHTML = '<span class="dot"></span><span class="status-text">Checking</span>';
+      }
 
       try {
         const res = await fetch(API_BASE + '/api/device-status/' + device.device_id);
@@ -2653,27 +2660,34 @@ function getDashboardHTML() {
           deviceStatuses[device.device_id] = data.status;
           deviceStatusData[device.device_id] = data;
 
-          const statusClass = data.status === 'healthy' ? 'online' : data.status === 'partial' ? 'partial' : data.status === 'unknown' ? 'unknown' : 'offline';
-          const statusText = data.status === 'healthy' ? 'Online' : data.status === 'partial' ? 'Partial' : data.status === 'unknown' ? 'Loading' : 'Offline';
-          badge.className = 'status-badge ' + statusClass;
-          badge.innerHTML = '<span class="dot"></span><span class="status-text">' + statusText + '</span>';
+          // Update UI if element exists
+          if (badge) {
+            const statusClass = data.status === 'healthy' ? 'online' : data.status === 'partial' ? 'partial' : data.status === 'unknown' ? 'unknown' : 'offline';
+            const statusText = data.status === 'healthy' ? 'Online' : data.status === 'partial' ? 'Partial' : data.status === 'unknown' ? 'Loading' : 'Offline';
+            badge.className = 'status-badge ' + statusClass;
+            badge.innerHTML = '<span class="dot"></span><span class="status-text">' + statusText + '</span>';
+          }
 
-          // Render services
+          // Render services if element exists
           if (servicesDiv) {
             servicesDiv.innerHTML = renderServicesHTML(device.device_id);
           }
         } else {
           deviceStatuses[device.device_id] = 'offline';
-          badge.className = 'status-badge offline';
-          badge.innerHTML = '<span class="dot"></span><span class="status-text">Offline</span>';
+          if (badge) {
+            badge.className = 'status-badge offline';
+            badge.innerHTML = '<span class="dot"></span><span class="status-text">Offline</span>';
+          }
           if (servicesDiv) {
             servicesDiv.innerHTML = renderServicesHTML(device.device_id);
           }
         }
       } catch (err) {
         deviceStatuses[device.device_id] = 'offline';
-        badge.className = 'status-badge offline';
-        badge.innerHTML = '<span class="dot"></span><span class="status-text">Offline</span>';
+        if (badge) {
+          badge.className = 'status-badge offline';
+          badge.innerHTML = '<span class="dot"></span><span class="status-text">Offline</span>';
+        }
         if (servicesDiv) {
           servicesDiv.innerHTML = renderServicesHTML(device.device_id);
         }
