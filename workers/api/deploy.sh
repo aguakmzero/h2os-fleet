@@ -1,5 +1,5 @@
 #!/bin/bash
-# Deploy dashboard worker with git version injected
+# Deploy API worker
 # Uses tech@aguakmzero.com Cloudflare account (work/H2OS)
 set -e
 
@@ -15,13 +15,7 @@ else
   exit 1
 fi
 
-# Get git short hash
-GIT_HASH=$(git rev-parse --short HEAD)
-
-# Update version in wrangler.toml
-sed -i '' "s/VERSION = \"'.*'\"/VERSION = \"'$GIT_HASH'\"/" wrangler.toml
-
-echo "Deploying dashboard with version: $GIT_HASH"
+echo "Deploying API worker..."
 npx wrangler deploy
 
-echo "Done! Version $GIT_HASH deployed."
+echo "Done! API deployed."

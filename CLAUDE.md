@@ -155,12 +155,27 @@ curl -s https://DEVICE-fleet.aguakmze.ro/screenshot -o screenshot.png
 ## Deployment
 
 ### Worker Deployment
+
+**Use the deploy scripts** (they auto-load credentials from `.env`):
 ```bash
-cd worker
-CLOUDFLARE_API_KEY=<global-api-key> CLOUDFLARE_EMAIL=tech@aguakmzero.com npx wrangler deploy
+# Deploy dashboard
+./workers/dashboard/deploy.sh
+
+# Deploy API
+./workers/api/deploy.sh
 ```
 
-**Important**: Use Global API Key, not API Token (token in .env is for different account).
+**Manual deployment** (if needed):
+```bash
+source .env
+CLOUDFLARE_API_KEY=$CLOUDFLARE_GLOBAL_API_KEY CLOUDFLARE_EMAIL=tech@aguakmzero.com npx wrangler deploy
+```
+
+**Credentials**: Stored in `/Users/sahil/Sites/h2os/fleet/.env`
+- `CLOUDFLARE_GLOBAL_API_KEY` - Global API key for tech@aguakmzero.com
+- `CLOUDFLARE_EMAIL` - tech@aguakmzero.com
+
+**IMPORTANT**: Use `CLOUDFLARE_API_KEY` + `CLOUDFLARE_EMAIL`, NOT `CLOUDFLARE_API_TOKEN`!
 
 ### Cloudflare Resources
 - **Account ID**: `b62c683522b0480cb5cf56b57dc6ba77`
