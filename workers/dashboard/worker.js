@@ -1224,6 +1224,24 @@ function getDashboardHTML() {
       color: var(--text-muted);
       margin-top: 0.375rem;
     }
+    .card-stats-row {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 0.375rem;
+      flex-wrap: wrap;
+    }
+    .stat-item {
+      display: flex;
+      align-items: center;
+      gap: 0.2rem;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+    }
+    .stat-item svg {
+      width: 12px;
+      height: 12px;
+      opacity: 0.7;
+    }
     .quick-info {
       display: flex;
       flex-wrap: wrap;
@@ -2647,7 +2665,6 @@ function getDashboardHTML() {
         return '<div class="services-header"><span class="services-title">Services</span><div class="services-progress"><div class="progress-bar"><div class="progress-fill bad" style="width:0%"></div></div><span class="progress-text">-/-</span></div></div><div class="services-placeholder" style="color:var(--accent-red)">Unable to connect</div>';
       }
 
-      const services = data.services || {};
       const running = data.running || 0;
       const total = data.total || 6;
       const percent = total > 0 ? Math.round((running / total) * 100) : 0;
@@ -2655,16 +2672,14 @@ function getDashboardHTML() {
 
       let html = '<div class="services-header"><span class="services-title">Services</span><div class="services-progress"><div class="progress-bar"><div class="progress-fill ' + progressClass + '" style="width:' + percent + '%"></div></div><span class="progress-text">' + running + '/' + total + '</span></div></div>';
 
-      if (services && Object.keys(services).length > 0) {
-        html += '<div class="services-list">';
-        for (const [service, isRunning] of Object.entries(services)) {
-          html += '<div class="service-item"><span class="service-dot ' + (isRunning ? 'running' : 'stopped') + '"></span><span class="service-name" title="' + service + '">' + service + '</span></div>';
-        }
-        html += '</div>';
+      // Compact stats row instead of full service list
+      const statsItems = [];
+      if (data.temp) statsItems.push('<span class="stat-item">' + icons.temp + ' ' + data.temp + '°</span>');
+      if (data.ram) statsItems.push('<span class="stat-item">' + icons.ram + ' ' + data.ram.percent + '%</span>');
+      if (data.uptime) statsItems.push('<span class="stat-item">' + icons.clock + ' ' + data.uptime + '</span>');
 
-        if (data.uptime) {
-          html += '<div class="uptime-text">Uptime: ' + data.uptime + '</div>';
-        }
+      if (statsItems.length > 0) {
+        html += '<div class="card-stats-row">' + statsItems.join('') + '</div>';
       }
 
       return html;
