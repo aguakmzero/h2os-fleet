@@ -2312,9 +2312,11 @@ function getDashboardHTML() {
         renderDevices();
         updateSummaryStats();
 
-        // Then progressively check status for each device
-        // Screenshots will load automatically when each device status is confirmed online
-        checkAllStatusProgressive();
+        // Wait for DOM to be fully rendered before starting status checks
+        // This prevents race condition where first batch can't find badge elements
+        requestAnimationFrame(() => {
+          checkAllStatusProgressive();
+        });
         updateLastUpdate();
       } catch (err) {
         showToast('Error loading devices', true);
