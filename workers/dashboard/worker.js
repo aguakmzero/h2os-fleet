@@ -2313,10 +2313,10 @@ function getDashboardHTML() {
         updateSummaryStats();
 
         // Wait for DOM to be fully rendered before starting status checks
-        // This prevents race condition where first batch can't find badge elements
-        requestAnimationFrame(() => {
+        // Use setTimeout to ensure browser has completed layout/paint
+        setTimeout(() => {
           checkAllStatusProgressive();
-        });
+        }, 50);
         updateLastUpdate();
       } catch (err) {
         showToast('Error loading devices', true);
@@ -2375,6 +2375,10 @@ function getDashboardHTML() {
       }
 
       checkOfflineAlerts();
+
+      // Final sync - ensure all badges match deviceStatuses
+      // This catches any cards that weren't updated due to timing issues
+      restoreCachedStatuses();
     }
 
     // Check single device status
