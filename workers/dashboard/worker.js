@@ -2313,10 +2313,8 @@ function getDashboardHTML() {
         updateSummaryStats();
 
         // Then progressively check status for each device
+        // Screenshots will load automatically when each device status is confirmed online
         checkAllStatusProgressive();
-
-        // Start loading screenshots immediately (they'll use proxy endpoint)
-        loadAllCardScreenshots();
         updateLastUpdate();
       } catch (err) {
         showToast('Error loading devices', true);
@@ -2487,6 +2485,9 @@ function getDashboardHTML() {
           servicesDiv.innerHTML = html;
           deviceServicesHTML[device.device_id] = html; // Cache for re-render
         }
+
+        // Load screenshot now that we know device is online
+        loadCardScreenshot(device.device_id);
       } catch (err) {
         deviceStatuses[device.device_id] = 'offline';
         badge.className = 'status-badge offline';
@@ -2670,6 +2671,9 @@ function getDashboardHTML() {
           if (servicesDiv) {
             servicesDiv.innerHTML = renderServicesHTML(device.device_id);
           }
+
+          // Load screenshot now that we know device is online
+          loadCardScreenshot(device.device_id);
         } else {
           deviceStatuses[device.device_id] = 'offline';
           if (badge) {
@@ -3063,18 +3067,26 @@ function getDashboardHTML() {
         const status = deviceStatuses[deviceId];
 
         // If device is offline, show offline state
-        if (status === 'offline' || status === 'unknown') {
+        if (status === 'offline') {
           if (loader) {
             loader.innerHTML = 'Offline';
             loader.style.opacity = '0.5';
           }
           container.classList.add('failed');
         }
-        // Otherwise restore cached screenshot if available
+        // For unknown, keep showing loader (status check in progress)
+        else if (status === 'unknown') {
+          // Just keep loader visible, don't mark as failed
+          container.classList.remove('failed');
+        }
+        // Online device - restore cached screenshot or trigger load
         else if (screenshotCache[deviceId] && loader && img) {
           img.src = screenshotCache[deviceId];
           loader.style.display = 'none';
           img.style.display = 'block';
+        } else {
+          // No cached screenshot for online device - trigger load
+          loadCardScreenshot(deviceId);
         }
       }
     }
@@ -3289,15 +3301,22 @@ function getDashboardHTML() {
       const container = document.getElementById('screenshot-' + deviceId);
       if (!container) return;
 
-      // Skip if device is offline - don't waste time trying to load screenshot
       const status = deviceStatuses[deviceId];
-      if (status === 'offline' || status === 'unknown') {
-        const loader = container.querySelector('.screenshot-loader');
+      const loader = container.querySelector('.screenshot-loader');
+
+      // Skip if device is offline - don't waste time trying to load screenshot
+      if (status === 'offline') {
         if (loader) {
           loader.innerHTML = 'Offline';
           loader.style.opacity = '0.5';
         }
         container.classList.add('failed');
+        return;
+      }
+
+      // For unknown status, show loading state but don't fetch yet
+      if (status === 'unknown') {
+        // Keep showing loader - will retry when status is known
         return;
       }
 
