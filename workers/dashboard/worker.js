@@ -2516,24 +2516,27 @@ function getDashboardHTML() {
       delete screenshotCache[deviceId]; // Clear cache to force screenshot refresh
 
       try {
-        // Use device filter to get just this device's updated status
-        const response = await fetch(API_BASE + '/api/fleet-status?device=' + deviceId);
+        // Use direct device status endpoint (much faster than fleet-status)
+        const response = await fetch(API_BASE + '/api/device-status/' + deviceId);
         if (!response.ok) throw new Error('Failed to fetch device status');
 
-        const data = await response.json();
-        const deviceData = data.devices.find(d => d.device_id === deviceId);
+        const deviceData = await response.json();
 
-        if (deviceData) {
-          // Update this device's status in the local state
-          deviceStatuses[deviceId] = deviceData.status;
-          deviceStatusData[deviceId] = deviceData;
+        // Merge with existing device info (friendly_name, location, hostname)
+        const mergedData = {
+          ...device,
+          ...deviceData,
+        };
 
-          // Update the UI for just this device
-          updateSingleDeviceUI(deviceId, deviceData);
+        // Update this device's status in the local state
+        deviceStatuses[deviceId] = deviceData.online ? (deviceData.status || 'healthy') : 'offline';
+        deviceStatusData[deviceId] = mergedData;
 
-          // Update the counts in filter pills
-          updateFilterCounts();
-        }
+        // Update the UI for just this device
+        updateSingleDeviceUI(deviceId, mergedData);
+
+        // Update the counts in filter pills
+        updateFilterCounts();
 
         loadCardScreenshot(deviceId); // Reload screenshot
       } catch (error) {
