@@ -14,4 +14,4 @@ routes = [
 
 # Default version for local dev (overridden by deploy.sh)
 [define]
-VERSION = "'27c5a6a'"
+VERSION = "'25ed5a7'"

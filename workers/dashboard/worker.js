@@ -1582,6 +1582,40 @@ function getDashboardHTML() {
     .modal-actions { display: flex; gap: 0.625rem; margin-top: 1.25rem; }
 
     /* Screenshot */
+    .modal-screenshot {
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 8px;
+      padding: 0.5rem;
+      margin-bottom: 1rem;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      position: relative;
+    }
+    .modal-screenshot:hover { opacity: 0.9; }
+    .modal-screenshot img {
+      width: 100%;
+      border-radius: 4px;
+      display: block;
+    }
+    .modal-screenshot .screenshot-loading {
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      text-align: center;
+      padding: 2rem;
+    }
+    .modal-screenshot .expand-hint {
+      position: absolute;
+      bottom: 0.75rem;
+      right: 0.75rem;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .modal-screenshot:hover .expand-hint { opacity: 1; }
     .screenshot-container {
       background: rgba(0, 0, 0, 0.3);
       border-radius: 8px;
@@ -3260,7 +3294,14 @@ function getDashboardHTML() {
           '</div></div>';
       }
 
+      // Screenshot section for info modal
+      const screenshotHtml = '<div class="modal-screenshot" onclick="showScreenshot(\\'' + device.hostname + '\\', \\'' + displayName.replace(/'/g, "\\\\'") + '\\')" id="info-modal-screenshot">' +
+        '<div class="screenshot-loading">Loading screenshot...</div>' +
+        '<span class="expand-hint">Click to expand</span>' +
+        '</div>';
+
       document.getElementById('modal-body').innerHTML =
+        screenshotHtml +
         '<div class="modal-section"><div class="modal-section-title">Device Info</div><div class="info-grid">' +
         '<div class="info-item"><span class="info-label">Location</span><span class="info-value">' + (device.location || '-') + '</span></div>' +
         '<div class="info-item"><span class="info-label">Hostname</span><span class="info-value mono">' + device.hostname + '</span></div>' +
@@ -3277,6 +3318,9 @@ function getDashboardHTML() {
         '<div class="modal-actions"><a class="btn btn-primary" href="https://' + device.hostname + '/vnc.html" target="_blank" style="flex:1">Open VNC</a></div>';
 
       document.getElementById('modal').classList.add('active');
+
+      // Load screenshot for info modal
+      loadInfoModalScreenshot(deviceId, device.hostname);
     }
 
     function copySSHModal(btn, hostname) {
@@ -3289,6 +3333,31 @@ function getDashboardHTML() {
           btn.classList.remove('copied');
         }, 2000);
       });
+    }
+
+    function loadInfoModalScreenshot(deviceId, hostname) {
+      const container = document.getElementById('info-modal-screenshot');
+      if (!container) return;
+
+      const loading = container.querySelector('.screenshot-loading');
+      const img = document.createElement('img');
+
+      img.onload = () => {
+        if (loading) loading.style.display = 'none';
+        container.insertBefore(img, container.firstChild);
+      };
+      img.onerror = () => {
+        if (loading) {
+          loading.textContent = 'Screenshot unavailable';
+          loading.style.color = 'var(--text-muted)';
+        }
+      };
+
+      if (deviceId) {
+        img.src = API_BASE + '/api/device-screenshot/' + deviceId + '?t=' + Date.now();
+      } else {
+        img.src = 'https://' + hostname + '/screenshot?t=' + Date.now();
+      }
     }
 
     function closeModal() {
