@@ -3324,7 +3324,6 @@ function getDashboardHTML() {
       if (screenshotCache[deviceId]) return;
 
       const hostname = container.dataset.hostname;
-      const loader = container.querySelector('.screenshot-loader');
       const img = container.querySelector('img');
       // Use proxy endpoint to avoid CORS
       const url = API_BASE + '/api/device-screenshot/' + deviceId + '?t=' + Date.now();
